@@ -1,41 +1,69 @@
 # ==============================================
 # ui/main/main_window.py — Shell principal (MVVM)
 # ==============================================
+from __future__ import annotations
+from typing import Optional
+import os
+
+from PySide6.QtCore import Slot, Qt
+from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget
+
 from app.core.i18n.i18n import I18n
 from app.core.theme.theme import ThemeManager
 from app.ui.components.toasts import Toast
 from app.ui.main.sidebar import Sidebar
 from app.ui.main.topbar import Topbar
-from app.ui.modules.analise_repique.views.repique_view import RepiqueView
+
+# Home / Repique
 from app.ui.modules.home.views.home_view import HomeView
-from PySide6.QtCore import Slot
-from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (
- QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
- QStackedWidget
-)
-from app.ui.modules.cgm.views.cgm_view import CgmView
+from app.ui.modules.analise_repique.views.repique_view import RepiqueView
 from app.core.data.repique_repository import RepiqueRepository
 from app.core.data.sqlserver import get_engine
-import os
+
+# CGM (tela principal)
+from app.ui.modules.cgm.views.cgm_view import CgmView
+
+# Menus (primeiras telas de cada submenu)
+from app.ui.modules.cgm.views.estorno.estorno_view import EstornoView
+from app.ui.modules.cgm.views.pacote.pacote_view import PacoteView
+from app.ui.modules.cgm.views.multas.multas_view import MultasView
+from app.ui.modules.cgm.views.alcada.alcada_view import AlcadaView
+from app.ui.modules.cgm.views.lar.lar_view import LarView
+
+# Cadastros
+from app.ui.modules.cgm.views.estorno.estorno_cadastro_view import EstornoCadastroView
+from app.ui.modules.cgm.views.pacote.pacote_cadastro_view import PacoteCadastroView
+from app.ui.modules.cgm.views.multas.multas_view_cadastro import MultasCadastroView
+from app.ui.modules.cgm.views.alcada.alcada_cadastro_view import AlcadaCadastroView
+from app.ui.modules.cgm.views.lar.lar_cadastro_view import LarCadastroView
+
+# Consultas
+from app.ui.modules.cgm.views.estorno.estorno_consulta_view import EstornoConsultaView
+from app.ui.modules.cgm.views.pacote.pacote_consulta_view import PacoteConsultaView
+from app.ui.modules.cgm.views.multas.multas_consulta_view import MultasConsultaView
+from app.ui.modules.cgm.views.alcada.alcada_consulta_view import AlcadaConsultaView
+from app.ui.modules.cgm.views.lar.lar_consulta_view import LarConsultaView
+
 
 class MainWindow(QMainWindow):
-
-    def __init__(self, theme: ThemeManager, i18n: I18n):
+    def __init__(self, theme: ThemeManager, i18n: I18n, repique_repo: Optional[RepiqueRepository] = None):
         super().__init__()
         self.theme = theme
         self.i18n = i18n
         self.setWindowTitle(self.i18n.tr("app.title"))
         self.resize(1200, 800)
-        self.engine = get_engine()
-        self.repique_repo = RepiqueRepository(self.engine)
 
-        central = QWidget() 
+        # Repo do Repique
+        self.engine = get_engine()
+        self.repique_repo = repique_repo or RepiqueRepository(self.engine)
+
+        # ---------- layout principal ----------
+        central = QWidget()
         root = QHBoxLayout(central)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
         self.setCentralWidget(central)
-
 
         # Sidebar
         self.sidebar = Sidebar(i18n)
@@ -43,67 +71,133 @@ class MainWindow(QMainWindow):
         root.addWidget(self.sidebar)
         self.sidebar_visible = True
         self.sidebar_locked = True
-        
 
         # Conteúdo (Topbar + Stack)
         content = QVBoxLayout(); content.setSpacing(8)
+
         self.topbar = Topbar(i18n)
         content.addWidget(self.topbar)
+
         self.stack = QStackedWidget()
         content.addWidget(self.stack)
-        self.topbar.set_menu_enabled(False)  # Desabilita menu até sidebar carregar
+
+        self.topbar.set_menu_enabled(False)
         self.topbar.sidebar_toggle_requested.connect(self._toggle_sidebar)
         self.topbar.set_view_title(self.i18n.tr("menu.home"), show_menu=False)
+
         user = os.getenv("USERNAME") or os.getenv("USER") or ""
         self.topbar.set_user(user)
+
         root.addLayout(content)
 
-        self.engine = get_engine()
-        self.repique_repo = RepiqueRepository(self.engine)
-
-        # Views
+        # ---------- Views ----------
         self.home_view = HomeView(i18n)
-        self.repique_view = RepiqueView(i18n, repo=self.repique_repo)  # Placeholder for future views
+        self.repique_view = RepiqueView(i18n, repo=self.repique_repo)
         self.cgm_view = CgmView()
-        self.stack.addWidget(self.home_view)
-        self.stack.addWidget(self.repique_view)
-        self.stack.addWidget(self.cgm_view)
+
+        # Menus
+        self.estorno_view = EstornoView()
+        self.pacote_view = PacoteView()
+        self.multas_view = MultasView()
+        self.alcada_view = AlcadaView()
+        self.lar_view = LarView()
+
+        # Cadastros
+        self.estorno_cadastro_view = EstornoCadastroView()
+        self.pacote_cadastro_view = PacoteCadastroView()
+        self.multas_cadastro_view = MultasCadastroView()
+        self.alcada_cadastro_view = AlcadaCadastroView()
+        self.lar_cadastro_view = LarCadastroView()
+
+        # Consultas
+        self.estorno_consulta_view = EstornoConsultaView()
+        self.pacote_consulta_view = PacoteConsultaView()
+        self.multas_consulta_view = MultasConsultaView()
+        self.alcada_consulta_view = AlcadaConsultaView()
+        self.lar_consulta_view = LarConsultaView()
+
+        # Empilha
+        for w in [
+            self.home_view, self.repique_view, self.cgm_view,
+            self.estorno_view, self.pacote_view, self.multas_view, self.alcada_view, self.lar_view,
+            self.estorno_cadastro_view, self.pacote_cadastro_view, self.multas_cadastro_view,
+            self.alcada_cadastro_view, self.lar_cadastro_view,
+            self.estorno_consulta_view, self.pacote_consulta_view, self.multas_consulta_view,
+            self.alcada_consulta_view, self.lar_consulta_view
+        ]:
+            self.stack.addWidget(w)
+
         self.stack.setCurrentWidget(self.home_view)
 
-        # Conexões
+        # ---------- Conexões ----------
         self.topbar.toggle_theme.connect(self.theme.toggle)
         self.sidebar.navigate.connect(self.on_navigate)
         self.home_view.new_repique.connect(self._go_repique)
-        self.cgm_view.open_cadastro.connect(self._open_cgm_form)
 
-        # Atalhos globais
+        # CGM principal → submenus
+        self.cgm_view.open_estorno.connect(lambda: self._goto(self.estorno_view, "Estorno"))
+        self.cgm_view.open_pacote.connect(lambda: self._goto(self.pacote_view, "Pacote de Tarifas"))
+        self.cgm_view.open_multas.connect(lambda: self._goto(self.multas_view, "Multas e Comissões"))
+        self.cgm_view.open_alcada.connect(lambda: self._goto(self.alcada_view, "Negociação com Alçada"))
+        self.cgm_view.open_lar.connect(lambda: self._goto(self.lar_view, "LAR"))
+
+        # Menus → voltar ao CGM
+        self.estorno_view.go_back.connect(self._go_cgm)
+        self.pacote_view.go_back.connect(self._go_cgm)
+        self.multas_view.go_back.connect(self._go_cgm)
+        self.alcada_view.go_back.connect(self._go_cgm)
+        self.lar_view.go_back.connect(self._go_cgm)
+
+        # Menus → cadastro/consulta
+        self.estorno_view.open_cadastro.connect(lambda: self._goto(self.estorno_cadastro_view, "Estorno — Cadastro"))
+        self.estorno_view.open_consulta.connect(lambda: self._goto(self.estorno_consulta_view, "Estorno — Consulta"))
+        self.pacote_view.open_cadastro.connect(lambda: self._goto(self.pacote_cadastro_view, "Pacote de Tarifas — Cadastro"))
+        self.pacote_view.open_consulta.connect(lambda: self._goto(self.pacote_consulta_view, "Pacote de Tarifas — Consulta"))
+        self.multas_view.open_cadastro.connect(lambda: self._goto(self.multas_cadastro_view, "Multas e Comissões — Cadastro"))
+        self.multas_view.open_consulta.connect(lambda: self._goto(self.multas_consulta_view, "Multas e Comissões — Consulta"))
+        self.alcada_view.open_cadastro.connect(lambda: self._goto(self.alcada_cadastro_view, "Negociação com Alçada — Cadastro"))
+        self.alcada_view.open_consulta.connect(lambda: self._goto(self.alcada_consulta_view, "Negociação com Alçada — Consulta"))
+        self.lar_view.open_cadastro.connect(lambda: self._goto(self.lar_cadastro_view, "LAR — Cadastro"))
+        self.lar_view.open_consulta.connect(lambda: self._goto(self.lar_consulta_view, "LAR — Consulta"))
+
+        # Cadastros → sucesso / cancelar → navegação + prefill na consulta correspondente
+        self.estorno_cadastro_view.saved.connect(self._after_estorno_saved)
+        self.estorno_cadastro_view.cancelled.connect(lambda: self._goto(self.estorno_view, "Estorno"))
+
+        self.pacote_cadastro_view.saved.connect(self._after_pacote_saved)
+        self.pacote_cadastro_view.cancelled.connect(lambda: self._goto(self.pacote_view, "Pacote de Tarifas"))
+
+        self.multas_cadastro_view.saved.connect(self._after_multas_saved)
+        self.multas_cadastro_view.cancelled.connect(lambda: self._goto(self.multas_view, "Multas e Comissões"))
+
+        self.alcada_cadastro_view.saved.connect(self._after_alcada_saved)
+        self.alcada_cadastro_view.cancelled.connect(lambda: self._goto(self.alcada_view, "Negociação com Alçada"))
+
+        self.lar_cadastro_view.saved.connect(self._after_lar_saved)
+        self.lar_cadastro_view.cancelled.connect(lambda: self._goto(self.lar_view, "LAR"))
+
+        # Consultas → voltar
+        self.estorno_consulta_view.go_back.connect(lambda: self._goto(self.estorno_view, "Estorno"))
+        self.pacote_consulta_view.go_back.connect(lambda: self._goto(self.pacote_view, "Pacote de Tarifas"))
+        self.multas_consulta_view.go_back.connect(lambda: self._goto(self.multas_view, "Multas e Comissões"))
+        self.alcada_consulta_view.go_back.connect(lambda: self._goto(self.alcada_view, "Negociação com Alçada"))
+        self.lar_consulta_view.go_back.connect(lambda: self._goto(self.lar_view, "LAR"))
+
+        # atalhos
         self._setup_shortcuts()
 
+    # -------- Navegação básica --------
     @Slot()
     def goto_home(self):
         self.stack.setCurrentWidget(self.home_view)
 
-    @Slot()
-    def toggle_language(self):
-        self.i18n.toggle()
-        # Recriar views com novo idioma (simples para v0)
-        cur = self.stack.currentWidget()
-        self.stack.removeWidget(self.home_view)
-        self.home_view.deleteLater()
-        self.home_view = HomeView(self.i18n)
-        self.stack.addWidget(self.home_view)
+    def _goto(self, widget: QWidget, title: str):
+        self.stack.setCurrentWidget(widget)
+        self._set_sidebar(False, False)
+        self.topbar.set_view_title(title, show_menu=True)
 
-        # recria Topbar/Sidebar para aplicar idioma
-        self.topbar.deleteLater(); self.topbar = Topbar(self.i18n)
-        self.centralWidget().layout().itemAt(1).layout().insertWidget(0, self.topbar)
-        self.topbar.toggle_theme.connect(self.theme.toggle)
-        self.stack.setCurrentWidget(self.home_view)
-
-        self.sidebar.deleteLater(); self.sidebar = Sidebar(self.i18n)
-        self.centralWidget().layout().insertWidget(0, self.sidebar)
-        self.sidebar.navigate.connect(self.on_navigate)
-
-        self.setWindowTitle(self.i18n.tr("app.title"))
+    def _go_cgm(self):
+        self._goto(self.cgm_view, "Cadastro no CGM")
 
     def _toggle_sidebar(self):
         if self.sidebar_locked:
@@ -116,45 +210,78 @@ class MainWindow(QMainWindow):
         self.sidebar_visible = visible
         self.sidebar.setVisible(visible)
         self.topbar.set_menu_enabled(not locked)
-    
+
     def _go_repique(self):
-        self.stack.setCurrentWidget(self.repique_view)
-        self._set_sidebar(False, False)
-        self.topbar.set_view_title(self.i18n.tr("menu.repique"), show_menu=True)    
-        
+        self._goto(self.repique_view, self.i18n.tr("menu.repique"))
+
     @Slot(str)
     def on_navigate(self, key: str):
         if key == "home":
             self.stack.setCurrentWidget(self.home_view)
             self._set_sidebar(True, True)
-            self.topbar.set_view_title(self.i18n.tr("menu.home"), show_menu=False)   
+            self.topbar.set_view_title(self.i18n.tr("menu.home"), show_menu=False)
         elif key == "repique":
-            self.stack.setCurrentWidget(self.repique_view)
-            self._set_sidebar(False, False)
-            self.topbar.set_view_title(self.i18n.tr("menu.repique"), show_menu=True)
+            self._go_repique()
         elif key == "cgm":
-            self.stack.setCurrentWidget(self.cgm_view)
-            self._set_sidebar(False, False)
-            self.topbar.set_view_title("Cadastro no CGM", show_menu=True)
+            self._go_cgm()
         else:
             Toast(self, f"{key} — em breve").show_at(self.width() - 260, 80)
             self._set_sidebar(False, False)
             self.topbar.set_view_title(key.capitalize(), show_menu=True)
 
     def _setup_shortcuts(self):
-        # Ctrl+Shift+L = tema
         act_theme = QAction(self); act_theme.setShortcut(QKeySequence("Ctrl+Shift+L"))
-        act_theme.triggered.connect(self.theme.toggle)
-        self.addAction(act_theme)
-        # F1 = ajuda
+        act_theme.triggered.connect(self.theme.toggle); self.addAction(act_theme)
         act_help = QAction(self); act_help.setShortcut(QKeySequence("F1"))
         act_help.triggered.connect(lambda: Toast(self, self.i18n.tr("help")).show_at(self.width()-220, 120))
         self.addAction(act_help)
 
-    def _open_cgm_form(self, cadastro_id: str):
-        # TODO: decidir para qual formulário ir baseado no prefixo/registro
-        Toast(self, f"Abrindo formulário do cadastro {cadastro_id}").show_at(self.width()-260, 80)
-        # Ex.: if cadastro_id.startswith("CGM-"):
-        #          self.stack.setCurrentWidget(self.cgm_estorno_view) ...
+    # -------- Pós-cadastro → ir para consulta com filtros preenchidos --------
+    def _after_estorno_saved(self, d: dict):
+        try:
+            # Estorno consulta filtra por AG/Conta
+            self.estorno_consulta_view.prefill({"Agência": d.get("Agência",""), "Conta": d.get("Conta","")})
+        except Exception: pass
+        self._goto(self.estorno_consulta_view, "Estorno — Consulta")
 
-    
+    def _after_pacote_saved(self, d: dict):
+        try:
+            self.pacote_consulta_view.prefill({
+                "Segmento": d.get("Segmento",""),
+                "Cliente":  d.get("Cliente",""),
+                "CNPJ":     d.get("CNPJ",""),
+                "AG":       d.get("AG",""),
+            })
+        except Exception: pass
+        self._goto(self.pacote_consulta_view, "Pacote de Tarifas — Consulta")
+
+    def _after_multas_saved(self, d: dict):
+        try:
+            self.multas_consulta_view.prefill({
+                "Segmento": d.get("Segmento",""),
+                "Cliente":  d.get("Cliente",""),
+                "CNPJ":     d.get("CNPJ",""),
+            })
+        except Exception: pass
+        self._goto(self.multas_consulta_view, "Multas e Comissões — Consulta")
+
+    def _after_alcada_saved(self, d: dict):
+        try:
+            self.alcada_consulta_view.prefill({
+                "Segmento": d.get("Segmento",""),
+                "CNPJ":     d.get("CNPJ",""),
+                "AG":       d.get("AG",""),
+                "Tarifa":   d.get("Tarifa",""),
+            })
+        except Exception: pass
+        self._goto(self.alcada_consulta_view, "Negociação com Alçada — Consulta")
+
+    def _after_lar_saved(self, d: dict):
+        try:
+            self.lar_consulta_view.prefill({
+                "Segmento": d.get("Segmento",""),
+                "Cliente":  d.get("Cliente",""),
+                "CNPJ":     d.get("CNPJ",""),
+            })
+        except Exception: pass
+        self._goto(self.lar_consulta_view, "LAR — Consulta")
