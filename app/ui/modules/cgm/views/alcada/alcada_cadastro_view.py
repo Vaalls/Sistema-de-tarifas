@@ -1,101 +1,202 @@
 from __future__ import annotations
 from typing import Dict
-from PySide6.QtCore import Qt, Signal
+
+from PySide6.QtCore import Qt, QDate, Slot, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QComboBox, QDateEdit,
-    QHBoxLayout, QPushButton, QMessageBox, QDoubleSpinBox, QSpinBox
+    QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QDateEdit, QDoubleSpinBox,
+    QSpinBox, QComboBox, QPushButton, QMessageBox, QHBoxLayout, QAbstractSpinBox
 )
 
-_GOLD_HOVER="QPushButton:hover{background:#C49A2E;}"
-def _btn(t, accent=True):
-    b=QPushButton(t)
-    if accent: b.setProperty("accent","true")
-    b.setMinimumHeight(36); b.setCursor(Qt.PointingHandCursor); b.setStyleSheet(_GOLD_HOVER)
+from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
+
+GOLD_HOVER = "QPushButton:hover{background:#C49A2E;}"
+
+def _btn(text: str, accent: bool = True) -> QPushButton:
+    b = QPushButton(text)
+    if accent:
+        b.setProperty("accent", "true")
+    b.setMinimumHeight(36)
+    b.setCursor(Qt.PointingHandCursor)
+    b.setStyleSheet(GOLD_HOVER)
     return b
+
+def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
+    d = QDateEdit()
+    d.setCalendarPopup(True)
+    d.setDisplayFormat("dd/MM/yyyy")
+    d.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    if default_today:
+        d.setDate(QDate.currentDate())
+    d.lineEdit().setInputMask("99/99/9999")
+    return d
+
 
 class AlcadaCadastroView(QWidget):
     saved = Signal(dict)
+    saved_view = Signal(dict)
+    saved_close = Signal(dict)
     cancelled = Signal()
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
+        self.inputs: Dict[str, QWidget] = {}
         self._build()
 
     def _build(self):
-        root=QVBoxLayout(self); root.setSpacing(12); root.setContentsMargins(12,12,12,12)
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(12,12,12,12)
 
-        g=QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(10)
+        g = QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(10)
 
-        self.ed_data=QDateEdit(); self.ed_data.setCalendarPopup(True)
-        self.cb_seg=QComboBox(); self.cb_seg.addItems(["PJ","PME","Corporate"])
-        self.ed_cnpj=QLineEdit()
-        self.ed_ag=QLineEdit(); self.ed_cc=QLineEdit()
-        self.ed_tarifa=QLineEdit()
-        self.v_ref=QDoubleSpinBox(); self.v_ref.setMaximum(1e9); self.v_ref.setDecimals(2)
-        self.v_aut=QDoubleSpinBox(); self.v_aut.setMaximum(1e9); self.v_aut.setDecimals(2)
-        self.ed_aut=QLineEdit()
-        self.sp_qtd=QSpinBox(); self.sp_qtd.setMaximum(9999)
-        self.ed_prazo=QLineEdit()
-        self.ed_venc=QDateEdit(); self.ed_venc.setCalendarPopup(True)
-        self.ed_obs=QLineEdit()
+        def add(label: str, w: QWidget, row: int, col: int, span: int = 1, minw: int = 120):
+            lab = QLabel(label); lab.setStyleSheet("background:transparent;")
+            w.setMinimumWidth(minw)
+            self.inputs[label] = w
+            g.addWidget(lab, row, col)
+            g.addWidget(w,   row, col+1, 1, span)
 
-        def add(r,c,lab,w,wmin=160):
-            g.addWidget(QLabel(lab),r,c); w.setMinimumWidth(wmin); g.addWidget(w,r,c+1)
+        # Linha 0 (Data_Neg + Segmento + CNPJ)
+        self.ed_data_neg = _date_ddmmyyyy()
+        add("Data_Neg", self.ed_data_neg, 0, 0)
+        add("Segmento", QLineEdit(),       0, 2, 1, 140)
+        add("CNPJ",     QLineEdit(),       0, 4, 1, 160)
 
-        r=0
-        add(r,0,"Data_Neg",self.ed_data);  add(r,2,"Segmento",self.cb_seg); r+=1
-        add(r,0,"CNPJ",self.ed_cnpj,160);  add(r,2,"AG",self.ed_ag,100); r+=1
-        add(r,0,"CC",self.ed_cc,140);      add(r,2,"Tarifa",self.ed_tarifa,120); r+=1
-        add(r,0,"Vlr_Tar_Ref",self.v_ref,120); add(r,2,"Vlr_Aut",self.v_aut,120); r+=1
-        add(r,0,"Autorização",self.ed_aut,180); add(r,2,"Qtde_De_Contrato",self.sp_qtd,120); r+=1
-        add(r,0,"Prazo",self.ed_prazo,120); add(r,2,"Vencimento",self.ed_venc,140); r+=1
-        add(r,0,"Observação",self.ed_obs,280)
+        # Linha 1 (AG/CC + Tarifa + Valores)
+        add("AG",       QLineEdit(),       1, 0, 1, 80)
+        add("CC",       QLineEdit(),       1, 2, 1, 140)
+        add("Tarifa",   QLineEdit(),       1, 4, 1, 100)
+
+        sp_ref = QDoubleSpinBox(); sp_ref.setMaximum(10_000_000); sp_ref.setDecimals(2)
+        sp_aut = QDoubleSpinBox(); sp_aut.setMaximum(10_000_000); sp_aut.setDecimals(2)
+        add("Vlr_Tar_Ref", sp_ref, 2, 0, 1, 120)
+        add("Vlr_Aut",     sp_aut, 2, 2, 1, 120)
+
+        add("Autorização", QLineEdit(),    2, 4, 1, 200)
+
+        # Linha 3 (Qtde de contratos + Prazo + Vencimento auto + Observação)
+        sp_qtde = QSpinBox(); sp_qtde.setRange(0, 9999)
+        self.sp_prazo = QSpinBox(); self.sp_prazo.setRange(0, 3650)  # dias
+        self.ed_venc  = _date_ddmmyyyy(); self.ed_venc.setReadOnly(True)
+
+        add("Qtde_De_Contrato", sp_qtde, 3, 0, 1, 100)
+        add("Prazo (dias)",      self.sp_prazo, 3, 2, 1, 120)
+        add("Vencimento",        self.ed_venc,  3, 4)
+
+        add("Observação", QLineEdit(),     4, 0, 7, 420)
 
         root.addLayout(g)
 
-        actions=QHBoxLayout(); actions.addStretch()
-        bclr=_btn("Limpar",accent=False); bcan=_btn("Cancelar",accent=False); bsave=_btn("Cadastrar")
-        actions.addWidget(bclr); actions.addWidget(bcan); actions.addWidget(bsave)
+        # Ações
+        actions = QHBoxLayout(); actions.addStretch()
+        btn_clear   = _btn("Limpar", accent=False)
+        btn_cancel  = _btn("Voltar", accent=False)
+        btn_save    = _btn("Cadastrar", accent=True)
+        btn_mass    = _btn("Carregar em massa", accent=True)
+        actions.addWidget(btn_clear); actions.addWidget(btn_cancel)
+        actions.addWidget(btn_save);  actions.addSpacing(12); actions.addWidget(btn_mass)
         root.addLayout(actions)
 
-        bclr.clicked.connect(self._clear)
-        bcan.clicked.connect(self._cancel)
-        bsave.clicked.connect(self._save)
+        # Conexões
+        btn_clear.clicked.connect(self._clear)
+        btn_cancel.clicked.connect(self._on_cancel)
+        btn_save.clicked.connect(self._on_save)
+        btn_mass.clicked.connect(self._open_mass_import)
 
-    def _has_any(self):
-        for w in [self.ed_cnpj,self.ed_ag,self.ed_cc,self.ed_tarifa,self.ed_aut,self.ed_prazo,self.ed_obs]:
-            if w.text().strip(): return True
-        return any([self.v_ref.value(), self.v_aut.value(), self.sp_qtd.value()])
+        self.ed_data_neg.dateChanged.connect(self._recalc_vencimento)
+        self.sp_prazo.valueChanged.connect(self._recalc_vencimento)
+        self._recalc_vencimento()  # inicial
+
+    # -------- lógica vencimento --------
+    @Slot()
+    def _recalc_vencimento(self):
+        base = self.ed_data_neg.date()
+        dias = int(self.sp_prazo.value())
+        self.ed_venc.setDate(base.addDays(dias))
+
+    # -------- helpers/fluxo --------
+    def _collect(self) -> Dict[str, str]:
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox
+        d: Dict[str, str] = {}
+        for label, w in self.inputs.items():
+            if isinstance(w, QLineEdit):
+                d[label] = w.text().strip()
+            elif isinstance(w, QComboBox):
+                d[label] = w.currentText().strip()
+            elif isinstance(w, QDateEdit):
+                d[label] = w.date().toString("dd/MM/yyyy")
+            elif isinstance(w, QDoubleSpinBox):
+                d[label] = f"{w.value():.2f}".replace(".", ",")
+            elif isinstance(w, QSpinBox):
+                d[label] = str(w.value())
+        return d
+
+    def _is_empty(self) -> bool:
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox
+        for w in self.inputs.values():
+            if isinstance(w, QLineEdit) and w.text().strip():
+                return False
+            if isinstance(w, (QDoubleSpinBox, QSpinBox)) and w.value() > 0:
+                return False
+            if isinstance(w, QComboBox) and w.currentIndex() > 0:
+                return False
+        return True
 
     def _clear(self):
-        for w in [self.ed_cnpj,self.ed_ag,self.ed_cc,self.ed_tarifa,self.ed_aut,self.ed_prazo,self.ed_obs]:
-            w.clear()
-        self.v_ref.setValue(0); self.v_aut.setValue(0); self.sp_qtd.setValue(0)
-        self.cb_seg.setCurrentIndex(0)
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox
+        for w in self.inputs.values():
+            if isinstance(w, QLineEdit):
+                w.clear()
+            elif isinstance(w, (QDoubleSpinBox, QSpinBox)):
+                w.setValue(0)
+            elif isinstance(w, QComboBox):
+                w.setCurrentIndex(0)
+            elif isinstance(w, QDateEdit):
+                w.setDate(QDate.currentDate())
 
-    def _cancel(self):
-        if self._has_any():
-            if QMessageBox.question(self,"Cancelar","Cancelar cadastro?") == QMessageBox.Yes:
-                self.cancelled.emit()
-        else:
+    @Slot()
+    def _on_cancel(self):
+        if self._is_empty():
+            self.cancelled.emit()
+            return
+        m = QMessageBox(self)
+        m.setWindowTitle("Cancelar")
+        m.setText("Deseja cancelar? Os dados preenchidos serão descartados.")
+        m.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        m.setDefaultButton(QMessageBox.No)
+        if m.exec() == QMessageBox.Yes:
             self.cancelled.emit()
 
-    def _save(self):
-        falta=[]
-        if not self.ed_cnpj.text().strip(): falta.append("CNPJ")
-        if not self.ed_ag.text().strip():   falta.append("AG")
-        if not self.ed_cc.text().strip():   falta.append("CC")
-        if not self.ed_tarifa.text().strip(): falta.append("Tarifa")
-        if falta:
-            QMessageBox.warning(self,"Campos obrigatórios","Preencha: "+", ".join(falta)); return
-        data:Dict[str,str]={
-            "Data_Neg": self.ed_data.date().toString("dd/MM/yyyy"),
-            "Segmento": self.cb_seg.currentText(),
-            "CNPJ": self.ed_cnpj.text().strip(),
-            "AG": self.ed_ag.text().strip(),
-            "CC": self.ed_cc.text().strip(),
-            "Tarifa": self.ed_tarifa.text().strip(),
-        }
-        m=QMessageBox(self); m.setWindowTitle("Sucesso"); m.setText("Cadastro realizado com sucesso.")
-        m.addButton("Visualizar", QMessageBox.AcceptRole); m.addButton("Fechar", QMessageBox.RejectRole); m.exec()
-        self.saved.emit(data)
+    @Slot()
+    def _on_save(self):
+        d = self._collect()
+
+        # valida mínimos para alçada
+        obrig = ["Data_Neg","CNPJ","AG","CC","Tarifa","Prazo"]
+        faltam = [f for f in obrig if not d.get(f)]
+        if faltam:
+            QMessageBox.warning(self, "Campos obrigatórios", "Preencha: " + ", ".join(faltam))
+            return
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Cadastro realizado")
+        msg.setText("Negociação com alçada cadastrada com sucesso.")
+        bt_vis   = msg.addButton("Visualizar", QMessageBox.AcceptRole)
+        bt_close = msg.addButton("Fechar",     QMessageBox.RejectRole)
+        msg.exec()
+
+        self._clear()
+        self.saved.emit(d)
+
+        if msg.clickedButton() is bt_vis:
+            self.saved_view.emit(d)
+        else:
+            self.saved_close.emit(d)
+
+    def _open_mass_import(self):
+        cols = ["Data_Neg","Segmento","CNPJ","AG","CC","Tarifa",
+                "Vlr_Tar_Ref","Vlr_Aut","Autorização","Qtde_De_Contrato",
+                "Prazo","Vencimento","Observação"]
+        dlg = MassImportDialog("Negociação com Alçada", cols, self)
+        if dlg.exec():
+            pass

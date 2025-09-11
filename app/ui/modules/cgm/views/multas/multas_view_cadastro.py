@@ -6,12 +6,16 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QPushButton, QMessageBox, QDoubleSpinBox, QSpinBox
 )
 
+from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
+
 _GOLD_HOVER = "QPushButton:hover{background:#C49A2E;}"
 def _btn(t, accent=True):
     b=QPushButton(t)
     if accent: b.setProperty("accent","true")
     b.setMinimumHeight(36); b.setCursor(Qt.PointingHandCursor); b.setStyleSheet(_GOLD_HOVER)
     return b
+
+FIELDS_MULTAS = ["Data_Neg","Segmento","Cliente","CNPJ","AG","CC","TAR","Vlr_tar","Vlr_Aut","Autorização","QTDE","Prazo","Neg_Esp","Prazo_SGN","Vencimento"]
 
 class MultasCadastroView(QWidget):
     saved = Signal(dict)
@@ -56,9 +60,13 @@ class MultasCadastroView(QWidget):
         root.addLayout(g)
 
         actions = QHBoxLayout(); actions.addStretch()
-        bclr=_btn("Limpar",accent=False); bcan=_btn("Cancelar",accent=False); bsave=_btn("Cadastrar")
+        bclr=_btn("Limpar",accent=False); bcan=_btn("Voltar",accent=False); bsave=_btn("Cadastrar")
         actions.addWidget(bclr); actions.addWidget(bcan); actions.addWidget(bsave)
         root.addLayout(actions)
+
+        bt_mass = _btn("Carregar em massa", accent=True)
+        actions.addStretch(); actions.addWidget(bt_mass)
+        bt_mass.clicked.connect(lambda: MassImportDialog("Multas e Comissões", FIELDS_MULTAS, self).exec())
 
         bclr.clicked.connect(self._clear)
         bcan.clicked.connect(self._cancel)
@@ -112,3 +120,12 @@ class MultasCadastroView(QWidget):
         m=QMessageBox(self); m.setWindowTitle("Sucesso"); m.setText("Cadastro realizado com sucesso.")
         m.addButton("Visualizar", QMessageBox.AcceptRole); m.addButton("Fechar", QMessageBox.RejectRole); m.exec()
         self.saved.emit(data)
+
+    def _open_mass_import(self):
+        cols = ["Data_Neg","Segmento","Cliente","CNPJ",
+                "AG","CC","TAR","Vlr_tar","Vlr_Aut","Autorização",
+                "QTDE","Prazo","Neg_Esp","Prazo_SGN","Vencimento"]
+        dlg = MassImportDialog("Multas e Comissões", cols, self)
+        if dlg.exec():
+            pass
+

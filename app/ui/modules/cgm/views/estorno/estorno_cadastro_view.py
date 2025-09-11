@@ -1,50 +1,66 @@
 from __future__ import annotations
 from typing import Dict, List
-from PySide6.QtCore import Qt, Signal, Slot
+
+from PySide6.QtCore import Qt, Slot, QDate, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QDateEdit, QComboBox,
-    QDoubleSpinBox, QPushButton, QMessageBox
+    QDoubleSpinBox, QPushButton, QMessageBox, QHBoxLayout, QAbstractSpinBox
 )
+
+from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
 
 GOLD_HOVER = "QPushButton:hover{background:#C49A2E;}"
 
 def _btn(text: str, accent: bool = True) -> QPushButton:
     b = QPushButton(text)
     if accent:
-        b.setProperty("accent", "true")
-    b.setMinimumHeight(38)
+        b.setProperty("accent", "true")   # dourado padrão do app
+    b.setMinimumHeight(36)
     b.setCursor(Qt.PointingHandCursor)
     b.setStyleSheet(GOLD_HOVER)
     return b
 
+def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
+    d = QDateEdit()
+    d.setCalendarPopup(True)
+    d.setDisplayFormat("dd/MM/yyyy")
+    d.setButtonSymbols(QAbstractSpinBox.NoButtons)  # some as setinhas; digite a data
+    if default_today:
+        d.setDate(QDate.currentDate())
+    # permite digitar livremente a data
+    d.lineEdit().setInputMask("99/99/9999")
+    return d
+
 
 class EstornoCadastroView(QWidget):
     """
-    Cadastro Estorno — sem título interno (Topbar mostra o título).
+    Cadastro Estorno no padrão visual dos outros cadastros.
     Regras:
-      - 'Cadastrar': valida mínimos, abre popup (Visualizar | Fechar)
+      - 'Cadastrar': valida mínimos e abre popup (Visualizar | Fechar)
         * Visualizar -> emite saved_view(dados)
         * Fechar     -> emite saved_close(dados)
         * Em ambos os casos limpa o formulário
-      - 'Limpar': limpa campos
-      - 'Cancelar': se vazio volta direto; se tiver algo preenchido pergunta (sim -> volta)
+      - 'Cancelar': se vazio volta direto; se tiver algo preenchido pergunta
     """
-    saved = Signal(dict)         # compat (não usado pelo fluxo novo, mas mantido)
-    saved_view = Signal(dict)    # navegar para a consulta com prefill
+    saved = Signal(dict)         # compat (mantido)
+    saved_view = Signal(dict)    # navegar para a consulta com filtros pré-preenchidos
     saved_close = Signal(dict)   # voltar ao menu principal
-    cancelled = Signal()         # voltar ao menu se vazio ou após confirmação
+    cancelled = Signal()         # voltar ao menu
 
     def __init__(self) -> None:
         super().__init__()
         self.inputs: Dict[str, QWidget] = {}
         self._build()
 
+    # ---------- UI ----------
     def _build(self) -> None:
         root = QVBoxLayout(self)
-        root.setSpacing(12); root.setContentsMargins(12,12,12,12)
+        root.setSpacing(12)
+        root.setContentsMargins(12, 12, 12, 12)
 
-        # Grade organizada por proximidade sem ser tudo “um embaixo do outro”
-        g = QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(10)
+        g = QGridLayout()
+        g.setHorizontalSpacing(12)
+        g.setVerticalSpacing(10)
 
         def add(label: str, w: QWidget, row: int, col: int, span: int = 1, minw: int = 120):
             lab = QLabel(label); lab.setStyleSheet("background:transparent;")
@@ -54,20 +70,20 @@ class EstornoCadastroView(QWidget):
             g.addWidget(w,   row, col+1, 1, span)
 
         # Linha 0
-        add("Data_Ent", QDateEdit(calendarPopup=True), 0, 0)
-        add("DT_Est",   QDateEdit(calendarPopup=True), 0, 2)
+        add("Data_Ent", _date_ddmmyyyy(), 0, 0)
+        add("DT_Est",   _date_ddmmyyyy(), 0, 2)
         cb_status = QComboBox(); cb_status.addItems(["Pendente","Aprovado","Negado"])
-        add("Status", cb_status, 0, 4)
+        add("Status", cb_status, 0, 4, 1, 140)
 
         # Linha 1
-        add("Área",     QLineEdit(), 1, 0, 3, 220)
+        add("Area",     QLineEdit(), 1, 0, 3, 240)
         add("Segmento", QLineEdit(), 1, 4, 1, 140)
         add("Resp",     QLineEdit(), 1, 6, 1, 180)
 
         # Linha 2
-        add("Agência",  QLineEdit(), 2, 0, 1, 90)
+        add("Agencia",  QLineEdit(), 2, 0, 1, 90)
         add("Conta",    QLineEdit(), 2, 2, 1, 160)
-        add("Nome_Ag",  QLineEdit(), 2, 4, 3, 220)
+        add("Nome_Ag",  QLineEdit(), 2, 4, 3, 240)
 
         # Linha 3
         add("Nome_Cli", QLineEdit(), 3, 0, 3, 260)
@@ -84,25 +100,30 @@ class EstornoCadastroView(QWidget):
 
         root.addLayout(g)
 
-        # Ações
-        row = QGridLayout()
-        bt_limpar   = _btn("Limpar", accent=False)
-        bt_cancelar = _btn("Cancelar", accent=False)
-        bt_cadastrar= _btn("Cadastrar", accent=True)
-        row.addWidget(bt_limpar,   0, 0)
-        row.addWidget(bt_cancelar, 0, 1)
-        row.addWidget(bt_cadastrar,0, 2)
-        row.setColumnStretch(3, 1)
-        root.addLayout(row)
+        # Barra de ações — no padrão dos demais (botões médios, lado a lado à direita)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        btn_clear   = _btn("Limpar", accent=False)
+        btn_cancel  = _btn("Voltar", accent=False)
+        btn_save    = _btn("Cadastrar", accent=True)
+        btn_mass    = _btn("Carregar em massa", accent=True)
+        actions.addWidget(btn_clear)
+        actions.addWidget(btn_cancel)
+        actions.addWidget(btn_save)
+        actions.addSpacing(12)
+        actions.addWidget(btn_mass)  # canto direito
+        root.addLayout(actions)
 
-        bt_limpar.clicked.connect(self._clear)
-        bt_cancelar.clicked.connect(self._on_cancel)
-        bt_cadastrar.clicked.connect(self._on_save)
+        # Conexões
+        btn_clear.clicked.connect(self._clear)
+        btn_cancel.clicked.connect(self._on_cancel)
+        btn_save.clicked.connect(self._on_save)
+        btn_mass.clicked.connect(self._open_mass_import)
 
-    # ------- helpers -------
+    # ---------- helpers ----------
     def _collect(self) -> Dict[str, str]:
         from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox
-        d: Dict[str,str] = {}
+        d: Dict[str, str] = {}
         for label, w in self.inputs.items():
             if isinstance(w, QLineEdit):
                 d[label] = w.text().strip()
@@ -114,7 +135,12 @@ class EstornoCadastroView(QWidget):
                 d[label] = f"{w.value():.2f}".replace(".", ",")
         return d
 
-    def _is_empty(self) -> bool:
+    def reset_form(self):
+        """Limpa todos os campos do formulário."""
+        self._clear()
+
+    def is_empty(self) -> bool:
+        """Retorna True se não houver nada relevante preenchido."""
         from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox
         for w in self.inputs.values():
             if isinstance(w, QLineEdit) and w.text().strip():
@@ -123,11 +149,10 @@ class EstornoCadastroView(QWidget):
                 return False
             if isinstance(w, QDoubleSpinBox) and w.value() > 0:
                 return False
-            # datas: mantemos padrão sem validar “vazio”
         return True
 
     def _validate(self, d: Dict[str, str]) -> List[str]:
-        obrig = ["Agência","Conta","Nome_Cli","CNPJ","Tar"]
+        obrig = ["Agencia","Conta","Nome_Cli","CNPJ","Tar"]
         return [f for f in obrig if not d.get(f)]
 
     def _clear(self):
@@ -140,23 +165,23 @@ class EstornoCadastroView(QWidget):
             elif isinstance(w, QDoubleSpinBox):
                 w.setValue(0.0)
             elif isinstance(w, QDateEdit):
-                pass
+                w.setDate(QDate.currentDate())
 
-    # ------- slots -------
+    # ---------- slots ----------
     @Slot()
     def _on_cancel(self):
         if self._is_empty():
+            self.reset_form()
             self.cancelled.emit()
             return
         m = QMessageBox(self)
         m.setWindowTitle("Cancelar")
         m.setText("Deseja cancelar? Os dados preenchidos serão descartados.")
         m.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        
+        m.setDefaultButton(QMessageBox.No)
         if m.exec() == QMessageBox.Yes:
+            self.reset_form()
             self.cancelled.emit()
-        else: 
-            m.setDefaultButton(QMessageBox.No)
 
     @Slot()
     def _on_save(self):
@@ -166,7 +191,6 @@ class EstornoCadastroView(QWidget):
             QMessageBox.warning(self, "Campos obrigatórios", "Preencha: " + ", ".join(faltam))
             return
 
-        # popup pós-cadastro
         msg = QMessageBox(self)
         msg.setWindowTitle("Cadastro realizado")
         msg.setText("Estorno cadastrado com sucesso.")
@@ -174,13 +198,26 @@ class EstornoCadastroView(QWidget):
         bt_close = msg.addButton("Fechar",     QMessageBox.RejectRole)
         msg.exec()
 
-        # sempre limpa o form após cadastrar
         self._clear()
-
-        # compat
-        self.saved.emit(d)
+        self.saved.emit(d)  # compat
 
         if msg.clickedButton() is bt_vis:
-            self.saved_view.emit(d)   # MainWindow -> abre consulta com prefill
+            self.saved_view.emit(d)
         else:
-            self.saved_close.emit(d)  # MainWindow -> volta ao menu principal
+            self.saved_close.emit(d)
+
+    def _open_mass_import(self):
+        cols = ["Data_Ent","Area","Agencia","Conta","Vlr_Est","Tar","DT_Est","Status",
+                "Resp","Segmento","Nome_Ag","Class","Parecer_OP","Nome_Cli","CNPJ"]
+        dlg = MassImportDialog("Estorno", cols, self)
+        if dlg.exec():  # QDialog.Accepted
+            # caminho do arquivo -> dlg.file_path
+            # integração com backend fica para a etapa de carga real
+            pass
+
+    def hideEvent(self, ev):
+        # sempre que sair do cadastro (troca no QStackedWidget), zera
+        try:
+            self.reset_form()
+        finally:
+            super().hideEvent(ev)

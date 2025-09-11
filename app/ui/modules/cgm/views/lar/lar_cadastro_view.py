@@ -6,7 +6,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QPushButton, QMessageBox, QDoubleSpinBox, QCheckBox
 )
 
+from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
+
 _GOLD_HOVER="QPushButton:hover{background:#C49A2E;}"
+
+FIELDS_LAR = ["Data_Neg","Segmento","Cliente","AG","CNPJ","Vlr_Tar_Ref","Vlr_Auto","Vlr_Lar","Tipo_Cliente","Autorização","Prazo","Vencimento","Observação","Atuado_SGN"]
+
 def _btn(t, accent=True):
     b=QPushButton(t)
     if accent: b.setProperty("accent","true")
@@ -50,7 +55,10 @@ class LarCadastroView(QWidget):
         root.addLayout(g)
 
         actions=QHBoxLayout(); actions.addStretch()
-        bclr=_btn("Limpar",accent=False); bcan=_btn("Cancelar",accent=False); bsave=_btn("Cadastrar")
+        bclr=_btn("Limpar",accent=False); bcan=_btn("Voltar",accent=False); bsave=_btn("Cadastrar")
+        bt_mass = _btn("Carregar em massa", accent=True)
+        actions.addStretch(); actions.addWidget(bt_mass)
+        bt_mass.clicked.connect(lambda: MassImportDialog("LAR", FIELDS_LAR, self).exec())
         actions.addWidget(bclr); actions.addWidget(bcan); actions.addWidget(bsave); root.addLayout(actions)
 
         bclr.clicked.connect(self._clear); bcan.clicked.connect(self._cancel); bsave.clicked.connect(self._save)
@@ -89,3 +97,12 @@ class LarCadastroView(QWidget):
         m=QMessageBox(self); m.setWindowTitle("Sucesso"); m.setText("Cadastro realizado com sucesso.")
         m.addButton("Visualizar", QMessageBox.AcceptRole); m.addButton("Fechar", QMessageBox.RejectRole); m.exec()
         self.saved.emit(data)
+
+    def _open_mass_import(self):
+        cols = ["Data_Neg","Segmento","Cliente","AG","CNPJ",
+                "Vlr_Tar_Ref","Vlr_Auto","Vlr_Lar","Tipo_Cliente",
+                "Autorização","Prazo","Vencimento","Observação","Atuado_SGN"]
+        dlg = MassImportDialog("LAR", cols, self)
+        if dlg.exec():
+            pass
+

@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
 )
+from debugpy import configure
 
 class PacoteView(QWidget):
     open_cadastro = Signal()
@@ -38,6 +39,8 @@ class PacoteView(QWidget):
         lay.addLayout(row)
         return card
 
+
+
     def _build(self):
         root = QVBoxLayout(self); root.setSpacing(18); root.setAlignment(Qt.AlignTop)
 
@@ -55,12 +58,36 @@ class PacoteView(QWidget):
         t = QLabel("Últimos cadastros"); t.setStyleSheet("font-weight:700; font-size:16px; background:transparent;")
         lay.addWidget(t, 0, Qt.AlignHCenter)
 
+        def _configure_recent_table(table: QTableWidget):
+            """
+            Configurações para:
+            - Sem scroll horizontal (cliente ocupa o espaço extra)
+            - Coluna 'Cliente' é elástica
+            - Última coluna (botão) com largura fixa (sem título)
+            - Sem “falha”/vazio na direita
+            """
+            # ordem sugerida: Usuário | Data | Cliente | CNPJ | AG | Conta | (botão)
+            table.setColumnCount(7)
+            table.setHorizontalHeaderLabels(["Usuário", "Data", "Cliente", "CNPJ", "AG", "Conta", ""])  # último sem título
+            table.verticalHeader().setVisible(False)
+
+            hh = table.horizontalHeader()
+            hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Usuário
+            hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Data
+            hh.setSectionResizeMode(2, QHeaderView.Stretch)           # Cliente (flexível)
+            hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # CNPJ
+            hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # AG
+            hh.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Conta
+            hh.setSectionResizeMode(6, QHeaderView.Fixed)             # Botão
+            table.setColumnWidth(6, 130)                              # largura para “Visualizar”
+
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setShowGrid(False)
+
         # Colunas incluem os filtros: Segmento, Cliente, CNPJ, AG
         self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["Usuário","Data","Cliente","Segmento","CNPJ","AG","Ações"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.table.setMinimumHeight(280)
+        _configure_recent_table(self.table)
+        lay.addWidget(self.table)
 
         hh = self.table.horizontalHeader(); hh.setSectionResizeMode(QHeaderView.Fixed)
         self.table.setColumnWidth(0, 150);  # Usuário
@@ -86,7 +113,8 @@ class PacoteView(QWidget):
             self.table.setItem(r,5,QTableWidgetItem(str(it.get("ag",""))))
 
             btn = self._gold_btn("Visualizar",120,36)
-            cell = QFrame(); h = QHBoxLayout(cell); h.setContentsMargins(0,0,0,0); h.setAlignment(Qt.AlignCenter); h.addWidget(btn)
+            wrap = QWidget()
+            h = QHBoxLayout(wrap); h.setContentsMargins(0,0,0,0); h.addStretch(); h.addWidget(btn)
+            self.table.setCellWidget(r,6,wrap)
             filtros = {"Segmento": it.get("segmento",""), "Cliente": it.get("cliente",""), "CNPJ": it.get("cnpj",""), "AG": it.get("ag","")}
             btn.clicked.connect(lambda _=None, f=filtros: self.open_registro.emit(f))
-            self.table.setCellWidget(r,6,cell)

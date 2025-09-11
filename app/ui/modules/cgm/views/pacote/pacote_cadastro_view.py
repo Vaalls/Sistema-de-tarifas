@@ -6,7 +6,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QPushButton, QMessageBox
 )
 
+from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
+
 _GOLD_HOVER = "QPushButton:hover{background:#C49A2E;}"
+
+FIELDS_PACOTE = ["Data_Neg","Segmento","Cliente","CNPJ","Pacote","AG","CC","Prazo","Data_Rev","Motivo","Tipo"]
 
 def _btn(text:str, accent=True):
     b = QPushButton(text)
@@ -65,8 +69,12 @@ class PacoteCadastroView(QWidget):
         # ações
         actions = QHBoxLayout(); actions.addStretch()
         self.bt_clear = _btn("Limpar", accent=False)
-        self.bt_cancel = _btn("Cancelar", accent=False)
+        self.bt_cancel = _btn("Voltar", accent=False)
         self.bt_save   = _btn("Cadastrar")
+        # no _build(), na barra de ações:
+        bt_mass = _btn("Carregar em massa", accent=True)
+        actions.addStretch(); actions.addWidget(bt_mass)
+        bt_mass.clicked.connect(lambda: MassImportDialog("Pacote de Tarifas", FIELDS_PACOTE, self).exec())
         actions.addWidget(self.bt_clear); actions.addWidget(self.bt_cancel); actions.addWidget(self.bt_save)
         root.addLayout(actions)
 
@@ -135,3 +143,11 @@ class PacoteCadastroView(QWidget):
         self.saved.emit(data)
         # Se quiser diferenciar:
         # if m.clickedButton()==viz: ...
+
+    def _open_mass_import(self):
+        cols = ["Data_Neg","Segmento","Cliente","CNPJ","Pacote",
+                "AG","CC","Prazo","Data_Rev","Motivo","Tipo"]
+        dlg = MassImportDialog("Pacote de Tarifas", cols, self)
+        if dlg.exec():
+            pass
+
