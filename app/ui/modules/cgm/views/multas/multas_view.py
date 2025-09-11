@@ -23,6 +23,21 @@ class MultasView(QWidget):
         btn=self._gold(btn_txt); btn.clicked.connect(slot)
         lay.addWidget(t); lay.addWidget(vref); hr=QHBoxLayout(); hr.addStretch(); hr.addWidget(btn); hr.addStretch(); lay.addLayout(hr); return card
 
+    def _configure_recent_table(self, table: QTableWidget):
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(["Usuário","Data","Cliente","Segmento","CNPJ",""])
+        table.verticalHeader().setVisible(False)
+        hh=table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(5, QHeaderView.Fixed)
+        table.setColumnWidth(5,130)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setMinimumHeight(280)
+
     def _build(self):
         root=QVBoxLayout(self); root.setSpacing(18); root.setAlignment(Qt.AlignTop)
         top=QHBoxLayout(); top.addStretch(); back=self._gold("Voltar ao CGM",160,40); back.clicked.connect(self.go_back.emit)
@@ -36,13 +51,8 @@ class MultasView(QWidget):
         t=QLabel("Últimos cadastros"); t.setStyleSheet("font-weight:700; font-size:16px; background:transparent;")
         lay.addWidget(t,0,Qt.AlignHCenter)
 
-        # Filtros: Segmento, Cliente, CNPJ
         self.table=QTableWidget(0,6)
-        self.table.setHorizontalHeaderLabels(["Usuário","Data","Cliente","Segmento","CNPJ","Ações"])
-        self.table.verticalHeader().setVisible(False)
-        hh=self.table.horizontalHeader(); hh.setSectionResizeMode(QHeaderView.Fixed)
-        self.table.setColumnWidth(0,150); self.table.setColumnWidth(1,140); self.table.setColumnWidth(2,320)
-        self.table.setColumnWidth(3,140); self.table.setColumnWidth(4,170); self.table.setColumnWidth(5,120)
+        self._configure_recent_table(self.table)
         lay.addWidget(self.table)
 
         row=QHBoxLayout(); row.setAlignment(Qt.AlignHCenter); row.addWidget(card); root.addLayout(row,stretch=1)
@@ -55,7 +65,10 @@ class MultasView(QWidget):
             self.table.setItem(r,2,QTableWidgetItem(str(it.get("cliente",""))))
             self.table.setItem(r,3,QTableWidgetItem(str(it.get("segmento",""))))
             self.table.setItem(r,4,QTableWidgetItem(str(it.get("cnpj",""))))
-            btn=self._gold("Visualizar",120,36); cell=QFrame(); h=QHBoxLayout(cell); h.setContentsMargins(0,0,0,0); h.setAlignment(Qt.AlignCenter); h.addWidget(btn)
+
+            btn=self._gold("Visualizar",120,36)
+            wrap=QWidget(); h=QHBoxLayout(wrap); h.setContentsMargins(0,0,0,0); h.addStretch(); h.addWidget(btn)
+            self.table.setCellWidget(r,5,wrap)
+
             filtros={"Segmento":it.get("segmento",""),"Cliente":it.get("cliente",""),"CNPJ":it.get("cnpj","")}
             btn.clicked.connect(lambda _=None,f=filtros: self.open_registro.emit(f))
-            self.table.setCellWidget(r,5,cell)

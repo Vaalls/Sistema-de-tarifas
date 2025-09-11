@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 import os
 
-from PySide6.QtCore import Slot, Qt
+from PySide6.QtCore import Slot
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget
 
@@ -16,6 +16,7 @@ from app.ui.main.sidebar import Sidebar
 from app.ui.main.topbar import Topbar
 
 # Home / Repique
+from app.ui.modules.cgm.views.pacote import pacote_view
 from app.ui.modules.home.views.home_view import HomeView
 from app.ui.modules.analise_repique.views.repique_view import RepiqueView
 from app.core.data.repique_repository import RepiqueRepository
@@ -148,7 +149,7 @@ class MainWindow(QMainWindow):
         self.alcada_view.go_back.connect(self._go_cgm)
         self.lar_view.go_back.connect(self._go_cgm)
 
-        # Menus → cadastro/consulta
+        # Menus → abrir cadastro/consulta
         self.estorno_view.open_cadastro.connect(lambda: self._goto(self.estorno_cadastro_view, "Estorno — Cadastro"))
         self.estorno_view.open_consulta.connect(lambda: self._goto(self.estorno_consulta_view, "Estorno — Consulta"))
         self.pacote_view.open_cadastro.connect(lambda: self._goto(self.pacote_cadastro_view, "Pacote de Tarifas — Cadastro"))
@@ -160,20 +161,33 @@ class MainWindow(QMainWindow):
         self.lar_view.open_cadastro.connect(lambda: self._goto(self.lar_cadastro_view, "LAR — Cadastro"))
         self.lar_view.open_consulta.connect(lambda: self._goto(self.lar_consulta_view, "LAR — Consulta"))
 
-        # Cadastros → sucesso / cancelar → navegação + prefill na consulta correspondente
-        self.estorno_cadastro_view.saved.connect(self._after_estorno_saved)
+        # “Visualizar” a partir da lista de últimos cadastros (prefill + navega)
+        self.estorno_view.open_registro.connect(lambda f: self._prefill_and_go(self.estorno_consulta_view, "Estorno — Consulta", f))
+        self.pacote_view.open_registro.connect(lambda f: self._prefill_and_go(self.pacote_consulta_view, "Pacote de Tarifas — Consulta", f))
+        self.multas_view.open_registro.connect(lambda f: self._prefill_and_go(self.multas_consulta_view, "Multas e Comissões — Consulta", f))
+        self.alcada_view.open_registro.connect(lambda f: self._prefill_and_go(self.alcada_consulta_view, "Negociação com Alçada — Consulta", f))
+        self.lar_view.open_registro.connect(   lambda f: self._prefill_and_go(self.lar_consulta_view,    "LAR — Consulta", f))
+
+        # Cadastros → sucesso/cancelar
+        # ESTORNO
+        self.estorno_cadastro_view.saved_view.connect(lambda d: self._after_estorno_saved(d, go_visual=True))
+        self.estorno_cadastro_view.saved_close.connect(lambda d: self._after_estorno_saved(d, go_visual=False))
         self.estorno_cadastro_view.cancelled.connect(lambda: self._goto(self.estorno_view, "Estorno"))
-
-        self.pacote_cadastro_view.saved.connect(self._after_pacote_saved)
+        # PACOTE
+        self.pacote_cadastro_view.saved_view.connect(lambda d: self._after_pacote_saved(d, go_visual=True))
+        self.pacote_cadastro_view.saved_close.connect(lambda d: self._after_pacote_saved(d, go_visual=False))
         self.pacote_cadastro_view.cancelled.connect(lambda: self._goto(self.pacote_view, "Pacote de Tarifas"))
-
-        self.multas_cadastro_view.saved.connect(self._after_multas_saved)
+        # MULTAS
+        self.multas_cadastro_view.saved_view.connect(lambda d: self._after_multas_saved(d, go_visual=True))
+        self.multas_cadastro_view.saved_close.connect(lambda d: self._after_multas_saved(d, go_visual=False))
         self.multas_cadastro_view.cancelled.connect(lambda: self._goto(self.multas_view, "Multas e Comissões"))
-
-        self.alcada_cadastro_view.saved.connect(self._after_alcada_saved)
+        # ALCADA
+        self.alcada_cadastro_view.saved_view.connect(lambda d: self._after_alcada_saved(d, go_visual=True))
+        self.alcada_cadastro_view.saved_close.connect(lambda d: self._after_alcada_saved(d, go_visual=False))
         self.alcada_cadastro_view.cancelled.connect(lambda: self._goto(self.alcada_view, "Negociação com Alçada"))
-
-        self.lar_cadastro_view.saved.connect(self._after_lar_saved)
+        # LAR
+        self.lar_cadastro_view.saved_view.connect(lambda d: self._after_lar_saved(d, go_visual=True))
+        self.lar_cadastro_view.saved_close.connect(lambda d: self._after_lar_saved(d, go_visual=False))
         self.lar_cadastro_view.cancelled.connect(lambda: self._goto(self.lar_view, "LAR"))
 
         # Consultas → voltar
@@ -236,52 +250,84 @@ class MainWindow(QMainWindow):
         act_help.triggered.connect(lambda: Toast(self, self.i18n.tr("help")).show_at(self.width()-220, 120))
         self.addAction(act_help)
 
+    # ---------- helpers ----------
+    def _prefill_and_go(self, consulta_view: QWidget, title: str, filtros: dict):
+        try:
+            # todas as consultas implementam prefill(**dict)
+            consulta_view.prefill(filtros, autorun=True)
+        except Exception:
+            pass
+        self._goto(consulta_view, title)
+
     # -------- Pós-cadastro → ir para consulta com filtros preenchidos --------
-    def _after_estorno_saved(self, d: dict):
-        try:
-            # Estorno consulta filtra por AG/Conta
-            self.estorno_consulta_view.prefill({"Agência": d.get("Agência",""), "Conta": d.get("Conta","")})
-        except Exception: pass
-        self._goto(self.estorno_consulta_view, "Estorno — Consulta")
+    def _after_estorno_saved(self, d: dict, go_visual: bool):
+        if go_visual:
+            try:
+                self.estorno_consulta_view.prefill({
+                    "Agência": d.get("Agencia","") or d.get("Agência",""),
+                    "Conta":   d.get("Conta",""),
+                    "Cliente": d.get("Nome_Cli",""),
+                }, autorun=True)
+            except Exception:
+                pass
+            self._goto(self.estorno_consulta_view, "Estorno — Consulta")
+        else:
+            self._goto(self.estorno_view, "Estorno")
 
-    def _after_pacote_saved(self, d: dict):
-        try:
-            self.pacote_consulta_view.prefill({
-                "Segmento": d.get("Segmento",""),
-                "Cliente":  d.get("Cliente",""),
-                "CNPJ":     d.get("CNPJ",""),
-                "AG":       d.get("AG",""),
-            })
-        except Exception: pass
-        self._goto(self.pacote_consulta_view, "Pacote de Tarifas — Consulta")
+    def _after_pacote_saved(self, d: dict, go_visual: bool):
+        if go_visual:
+            try:
+                self.pacote_consulta_view.prefill({
+                    "Segmento": d.get("Segmento",""),
+                    "Cliente":  d.get("Cliente",""),
+                    "CNPJ":     d.get("CNPJ",""),
+                    "AG":       d.get("AG",""),
+                }, autorun=True)
+            except Exception:
+                pass
+            self._goto(self.pacote_consulta_view, "Pacote de Tarifas — Consulta")
+        else:
+            self._goto(self.pacote_view, "Pacote de Tarifas")
 
-    def _after_multas_saved(self, d: dict):
-        try:
-            self.multas_consulta_view.prefill({
-                "Segmento": d.get("Segmento",""),
-                "Cliente":  d.get("Cliente",""),
-                "CNPJ":     d.get("CNPJ",""),
-            })
-        except Exception: pass
-        self._goto(self.multas_consulta_view, "Multas e Comissões — Consulta")
+    def _after_multas_saved(self, d: dict, go_visual: bool):
+        if go_visual:
+            try:
+                self.multas_consulta_view.prefill({
+                    "Segmento": d.get("Segmento",""),
+                    "Cliente":  d.get("Cliente",""),
+                    "CNPJ":     d.get("CNPJ",""),
+                }, autorun=True)
+            except Exception:
+                pass
+            self._goto(self.multas_consulta_view, "Multas e Comissões — Consulta")
+        else:
+            self._goto(self.multas_view, "Multas e Comissões")
 
-    def _after_alcada_saved(self, d: dict):
-        try:
-            self.alcada_consulta_view.prefill({
-                "Segmento": d.get("Segmento",""),
-                "CNPJ":     d.get("CNPJ",""),
-                "AG":       d.get("AG",""),
-                "Tarifa":   d.get("Tarifa",""),
-            })
-        except Exception: pass
-        self._goto(self.alcada_consulta_view, "Negociação com Alçada — Consulta")
+    def _after_alcada_saved(self, d: dict, go_visual: bool):
+        if go_visual:
+            try:
+                self.alcada_consulta_view.prefill({
+                    "Segmento": d.get("Segmento",""),
+                    "CNPJ":     d.get("CNPJ",""),
+                    "AG":       d.get("AG",""),
+                    "Tarifa":   d.get("Tarifa",""),
+                }, autorun=True)
+            except Exception:
+                pass
+            self._goto(self.alcada_consulta_view, "Negociação com Alçada — Consulta")
+        else:
+            self._goto(self.alcada_view, "Negociação com Alçada")
 
-    def _after_lar_saved(self, d: dict):
-        try:
-            self.lar_consulta_view.prefill({
-                "Segmento": d.get("Segmento",""),
-                "Cliente":  d.get("Cliente",""),
-                "CNPJ":     d.get("CNPJ",""),
-            })
-        except Exception: pass
-        self._goto(self.lar_consulta_view, "LAR — Consulta")
+    def _after_lar_saved(self, d: dict, go_visual: bool):
+        if go_visual:
+            try:
+                self.lar_consulta_view.prefill({
+                    "Segmento": d.get("Segmento",""),
+                    "Cliente":  d.get("Cliente",""),
+                    "CNPJ":     d.get("CNPJ",""),
+                }, autorun=True)
+            except Exception:
+                pass
+            self._goto(self.lar_consulta_view, "LAR — Consulta")
+        else:
+            self._goto(self.lar_view, "LAR")
