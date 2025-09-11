@@ -1,28 +1,44 @@
 from __future__ import annotations
 from typing import Dict
-from PySide6.QtCore import Qt, Signal
+
+from PySide6.QtCore import Qt, QDate, Slot, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QComboBox, QDateEdit,
-    QHBoxLayout, QPushButton, QMessageBox, QDoubleSpinBox, QSpinBox
+    QHBoxLayout, QPushButton, QMessageBox, QDoubleSpinBox, QSpinBox, QAbstractSpinBox
 )
 
 from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
 
-_GOLD_HOVER = "QPushButton:hover{background:#C49A2E;}"
-def _btn(t, accent=True):
-    b=QPushButton(t)
+GOLD_HOVER = "QPushButton:hover{background:#C49A2E;}"
+
+def _btn(text: str, accent: bool = True) -> QPushButton:
+    b = QPushButton(text)
     if accent: b.setProperty("accent","true")
-    b.setMinimumHeight(36); b.setCursor(Qt.PointingHandCursor); b.setStyleSheet(_GOLD_HOVER)
+    b.setMinimumHeight(36); b.setCursor(Qt.PointingHandCursor); b.setStyleSheet(GOLD_HOVER)
     return b
 
-FIELDS_MULTAS = ["Data_Neg","Segmento","Cliente","CNPJ","AG","CC","TAR","Vlr_tar","Vlr_Aut","Autorização","QTDE","Prazo","Neg_Esp","Prazo_SGN","Vencimento"]
+def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
+    d = QDateEdit()
+    d.setCalendarPopup(True)
+    d.setDisplayFormat("dd/MM/yyyy")
+    d.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    if default_today: d.setDate(QDate.currentDate())
+    if d.lineEdit(): d.lineEdit().setInputMask("99/99/9999")
+    return d
+
+FIELDS_MULTAS = ["Data_Neg","Segmento","Cliente","CNPJ","AG","CC","TAR","Vlr_tar","Vlr_Aut",
+                 "Autorização","QTDE","Prazo","Neg_Esp","Prazo_SGN","Vencimento"]
+
 
 class MultasCadastroView(QWidget):
     saved = Signal(dict)
+    saved_view = Signal(dict)
+    saved_close = Signal(dict)
     cancelled = Signal()
 
     def __init__(self):
         super().__init__()
+        self.inputs: Dict[str, QWidget] = {}
         self._build()
 
     def _build(self):
@@ -30,102 +46,134 @@ class MultasCadastroView(QWidget):
 
         g = QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(10)
 
-        self.ed_data = QDateEdit(); self.ed_data.setCalendarPopup(True)
-        self.cb_seg = QComboBox(); self.cb_seg.addItems(["PJ","PME","Corporate"])
-        self.ed_cliente = QLineEdit(); self.ed_cnpj = QLineEdit()
-        self.ed_ag = QLineEdit(); self.ed_cc = QLineEdit()
-        self.ed_tar = QLineEdit()
-        self.v_tar = QDoubleSpinBox(); self.v_tar.setMaximum(1e9); self.v_tar.setDecimals(2)
-        self.v_aut = QDoubleSpinBox(); self.v_aut.setMaximum(1e9); self.v_aut.setDecimals(2)
-        self.ed_aut = QLineEdit()
-        self.sp_qtde = QSpinBox(); self.sp_qtde.setMaximum(9999)
-        self.ed_prazo = QLineEdit()
-        self.cb_neg_esp = QComboBox(); self.cb_neg_esp.addItems(["N","S"])
-        self.ed_prazo_sgn = QLineEdit()
-        self.ed_venc = QDateEdit(); self.ed_venc.setCalendarPopup(True)
+        def add(label: str, w: QWidget, r: int, c: int, span: int=1, minw: int=140):
+            g.addWidget(QLabel(label), r, c)
+            w.setMinimumWidth(minw)
+            self.inputs[label] = w
+            g.addWidget(w, r, c+1, 1, span)
 
-        def add(r,c,lab,w,wmin=160):
-            g.addWidget(QLabel(lab),r,c); w.setMinimumWidth(wmin); g.addWidget(w,r,c+1)
+        # Linha 0
+        self.ed_data = _date_ddmmyyyy()
+        add("Data_Neg", self.ed_data, 0, 0)
+        cb_seg = QComboBox(); cb_seg.addItems(["PJ","PME","Corporate"])
+        add("Segmento", cb_seg, 0, 2)
 
-        r=0
-        add(r,0,"Data_Neg",self.ed_data);        add(r,2,"Segmento",self.cb_seg); r+=1
-        add(r,0,"Cliente", self.ed_cliente,240); add(r,2,"CNPJ",self.ed_cnpj,160); r+=1
-        add(r,0,"AG",self.ed_ag,100);            add(r,2,"CC",self.ed_cc,140); r+=1
-        add(r,0,"TAR",self.ed_tar,100);          add(r,2,"Vlr_tar",self.v_tar,120); r+=1
-        add(r,0,"Vlr_Aut",self.v_aut,120);       add(r,2,"Autorização",self.ed_aut,180); r+=1
-        add(r,0,"QTDE",self.sp_qtde,100);        add(r,2,"Prazo",self.ed_prazo,120); r+=1
-        add(r,0,"Neg_Esp",self.cb_neg_esp,100);  add(r,2,"Prazo_SGN",self.ed_prazo_sgn,140); r+=1
-        add(r,0,"Vencimento",self.ed_venc,160)
+        # Linha 1
+        add("Cliente", QLineEdit(), 1, 0, 1, 240)
+        add("CNPJ",    QLineEdit(), 1, 2, 1, 160)
+
+        # Linha 2
+        add("AG", QLineEdit(), 2, 0, 1, 90)
+        add("CC", QLineEdit(), 2, 2, 1, 140)
+
+        # Linha 3
+        add("TAR",     QLineEdit(),     3, 0, 1, 100)
+        v_tar = QDoubleSpinBox(); v_tar.setMaximum(1e9); v_tar.setDecimals(2)
+        add("Vlr_tar", v_tar,           3, 2, 1, 120)
+
+        # Linha 4
+        v_aut = QDoubleSpinBox(); v_aut.setMaximum(1e9); v_aut.setDecimals(2)
+        add("Vlr_Aut", v_aut, 4, 0, 1, 120)
+        add("Autorização", QLineEdit(), 4, 2, 1, 200)
+
+        # Linha 5
+        sp_qtde = QSpinBox(); sp_qtde.setRange(0, 9999)
+        add("QTDE", sp_qtde, 5, 0, 1, 100)
+
+        self.sp_prazo = QSpinBox(); self.sp_prazo.setRange(0, 3650)  # dias
+        add("Prazo", self.sp_prazo, 5, 2, 1, 120)
+
+        # Linha 6
+        cb_neg_esp = QComboBox(); cb_neg_esp.addItems(["N","S"])
+        add("Neg_Esp", cb_neg_esp, 6, 0, 1, 100)
+        add("Prazo_SGN", QLineEdit(), 6, 2, 1, 140)
+
+        # Linha 7 — Vencimento calculado
+        self.ed_venc = _date_ddmmyyyy()
+        self.ed_venc.setReadOnly(True)
+        add("Vencimento", self.ed_venc, 7, 0, 1, 140)
 
         root.addLayout(g)
 
+        # Ações
         actions = QHBoxLayout(); actions.addStretch()
-        bclr=_btn("Limpar",accent=False); bcan=_btn("Voltar",accent=False); bsave=_btn("Cadastrar")
+        bclr=_btn("Limpar",accent=False); bcan=_btn("Cancelar",accent=False); bsave=_btn("Cadastrar")
+        bmass=_btn("Carregar em massa")
         actions.addWidget(bclr); actions.addWidget(bcan); actions.addWidget(bsave)
+        actions.addSpacing(12); actions.addWidget(bmass)
         root.addLayout(actions)
 
-        bt_mass = _btn("Carregar em massa", accent=True)
-        actions.addStretch(); actions.addWidget(bt_mass)
-        bt_mass.clicked.connect(lambda: MassImportDialog("Multas e Comissões", FIELDS_MULTAS, self).exec())
-
+        # Conexões
         bclr.clicked.connect(self._clear)
-        bcan.clicked.connect(self._cancel)
-        bsave.clicked.connect(self._save)
+        bcan.clicked.connect(self._on_cancel)
+        bsave.clicked.connect(self._on_save)
+        bmass.clicked.connect(lambda: MassImportDialog("Multas e Comissões", FIELDS_MULTAS, self).exec())
 
-    def _has_any(self):
-        for w in [self.ed_cliente,self.ed_cnpj,self.ed_ag,self.ed_cc,self.ed_tar,self.ed_aut,self.ed_prazo,self.ed_prazo_sgn]:
-            if isinstance(w, QLineEdit) and w.text().strip(): return True
-        return any([self.v_tar.value(), self.v_aut.value(), self.sp_qtde.value()])
+        self.ed_data.dateChanged.connect(self._recalc_vencimento)
+        self.sp_prazo.valueChanged.connect(self._recalc_vencimento)
+        self._recalc_vencimento()
+
+    # Lógica vencimento
+    @Slot()
+    def _recalc_vencimento(self):
+        base = self.ed_data.date()
+        dias = int(self.sp_prazo.value())
+        self.ed_venc.setDate(base.addDays(dias))
+
+    # Helpers
+    def _collect(self) -> Dict[str,str]:
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox
+        d: Dict[str,str] = {}
+        for label, w in self.inputs.items():
+            if isinstance(w, QLineEdit): d[label] = w.text().strip()
+            elif isinstance(w, QComboBox): d[label] = w.currentText().strip()
+            elif isinstance(w, QDateEdit): d[label] = w.date().toString("dd/MM/yyyy")
+            elif isinstance(w, QDoubleSpinBox): d[label] = f"{w.value():.2f}".replace(".", ",")
+            elif isinstance(w, QSpinBox): d[label] = str(w.value())
+        return d
+
+    def _is_empty(self) -> bool:
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox
+        for w in self.inputs.values():
+            if isinstance(w, QLineEdit) and w.text().strip(): return False
+            if isinstance(w, (QDoubleSpinBox, QSpinBox)) and w.value() > 0: return False
+            if isinstance(w, QComboBox) and w.currentIndex() > 0: return False
+        return True
 
     def _clear(self):
-        for w in [self.ed_cliente,self.ed_cnpj,self.ed_ag,self.ed_cc,self.ed_tar,self.ed_aut,self.ed_prazo,self.ed_prazo_sgn]:
-            w.clear()
-        self.v_tar.setValue(0); self.v_aut.setValue(0); self.sp_qtde.setValue(0)
-        self.cb_seg.setCurrentIndex(0); self.cb_neg_esp.setCurrentIndex(0)
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox
+        for w in self.inputs.values():
+            if isinstance(w, QLineEdit): w.clear()
+            elif isinstance(w, (QDoubleSpinBox, QSpinBox)): w.setValue(0)
+            elif isinstance(w, QComboBox): w.setCurrentIndex(0)
+            elif isinstance(w, QDateEdit): w.setDate(QDate.currentDate())
 
-    def _cancel(self):
-        if self._has_any():
-            if QMessageBox.question(self,"Cancelar","Cancelar cadastro? Dados serão descartados.")==QMessageBox.Yes:
-                self.cancelled.emit()
-        else:
-            self.cancelled.emit()
+    # Fluxo
+    @Slot()
+    def _on_cancel(self):
+        if self._is_empty():
+            self._clear(); self.cancelled.emit(); return
+        if QMessageBox.question(self,"Cancelar","Cancelar cadastro? Dados serão descartados.") == QMessageBox.Yes:
+            self._clear(); self.cancelled.emit()
 
-    def _save(self):
-        falta=[]
-        if not self.ed_cliente.text().strip(): falta.append("Cliente")
-        if not self.ed_cnpj.text().strip():    falta.append("CNPJ")
-        if not self.ed_ag.text().strip():      falta.append("AG")
-        if not self.ed_cc.text().strip():      falta.append("CC")
-        if not self.ed_tar.text().strip():     falta.append("TAR")
-        if falta:
-            QMessageBox.warning(self,"Campos obrigatórios","Preencha: "+", ".join(falta)); return
+    @Slot()
+    def _on_save(self):
+        d = self._collect()
+        obrig = ["Cliente","CNPJ","AG","CC","TAR"]
+        faltam = [f for f in obrig if not d.get(f)]
+        if faltam:
+            QMessageBox.warning(self,"Campos obrigatórios","Preencha: "+", ".join(faltam)); return
 
-        data: Dict[str,str] = {
-            "Data_Neg": self.ed_data.date().toString("dd/MM/yyyy"),
-            "Segmento": self.cb_seg.currentText(),
-            "Cliente": self.ed_cliente.text().strip(),
-            "CNPJ": self.ed_cnpj.text().strip(),
-            "AG": self.ed_ag.text().strip(),
-            "CC": self.ed_cc.text().strip(),
-            "TAR": self.ed_tar.text().strip(),
-            "Vlr_tar": f"{self.v_tar.value():,.2f}".replace(",", "X").replace(".", ",").replace("X","."),
-            "Vlr_Aut": f"{self.v_aut.value():,.2f}".replace(",", "X").replace(".", ",").replace("X","."),
-            "Autorização": self.ed_aut.text().strip(),
-            "QTDE": str(self.sp_qtde.value()),
-            "Prazo": self.ed_prazo.text().strip(),
-            "Neg_Esp": self.cb_neg_esp.currentText(),
-            "Prazo_SGN": self.ed_prazo_sgn.text().strip(),
-            "Vencimento": self.ed_venc.date().toString("dd/MM/yyyy"),
-        }
         m=QMessageBox(self); m.setWindowTitle("Sucesso"); m.setText("Cadastro realizado com sucesso.")
-        m.addButton("Visualizar", QMessageBox.AcceptRole); m.addButton("Fechar", QMessageBox.RejectRole); m.exec()
-        self.saved.emit(data)
+        vis = m.addButton("Visualizar", QMessageBox.AcceptRole)
+        close = m.addButton("Fechar", QMessageBox.RejectRole)
+        m.exec()
 
-    def _open_mass_import(self):
-        cols = ["Data_Neg","Segmento","Cliente","CNPJ",
-                "AG","CC","TAR","Vlr_tar","Vlr_Aut","Autorização",
-                "QTDE","Prazo","Neg_Esp","Prazo_SGN","Vencimento"]
-        dlg = MassImportDialog("Multas e Comissões", cols, self)
-        if dlg.exec():
-            pass
+        self._clear()
+        self.saved.emit(d)
+        if m.clickedButton() is vis: self.saved_view.emit(d)
+        else:                         self.saved_close.emit(d)
 
+    def hideEvent(self, ev):
+        try: self._clear()
+        finally: super().hideEvent(ev)
