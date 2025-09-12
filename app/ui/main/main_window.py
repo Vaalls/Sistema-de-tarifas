@@ -7,7 +7,7 @@ import os
 
 from PySide6.QtCore import Slot
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QMessageBox
 
 from app.core.i18n.i18n import I18n
 from app.core.theme.theme import ThemeManager
@@ -17,6 +17,8 @@ from app.ui.main.topbar import Topbar
 
 # Home / Repique
 from app.ui.modules.cgm.views.pacote import pacote_view
+from app.ui.modules.dashboard.views.dashboard_menu_view import DashboardMenuView
+from app.ui.modules.dashboard.views.dashboard_view import DashboardView
 from app.ui.modules.home.views.home_view import HomeView
 from app.ui.modules.analise_repique.views.repique_view import RepiqueView
 from app.core.data.repique_repository import RepiqueRepository
@@ -55,6 +57,45 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(self.i18n.tr("app.title"))
         self.resize(1200, 800)
 
+                # --- Dashboards ---
+        self.dashboard_menu_view = DashboardMenuView()
+        self.dashboard_view = DashboardView()
+
+                # ---- Dashboard module ----
+        self._dash_meta = [
+            {
+                "key": "cgm_ops",
+                "title": "CGM — Operações",
+                "secure_url": "https://app.powerbi.com/reportEmbed?reportId=ef3dbca8-07d1-4029-9c6e-5767511babc1&autoAuth=true&ctid=11dbbfe2-89b8-4549-be10-cec364e59551",
+                "restricted": False,
+                "desc": "Visão 360 de volumes, pendências e SLAs no CGM."
+            },
+            {
+                "key": "comercial",
+                "title": "Performance Comercial",
+                "secure_url": "https://app.powerbi.com/reportEmbed?reportId=GUID2&groupId=GUID_WORKSPACE&autoAuth=true&ctid=TENANT_GUID",
+                "restricted": True,  # ⬅ “somente gestora”
+                "desc": "Receita, evolução mensal, ranking de agências."
+            },
+            {
+                "key": "cockpit",
+                "title": "Operações Cockpit",
+                "secure_url": "https://app.powerbi.com/reportEmbed?reportId=91423210-36e4-4d71-ae9b-f262e2799156&autoAuth=true&ctid=940a1fd6-e859-4fe8-974b-ec76448a2f39",
+                "restricted": False,
+                "desc": "Acompanhamento de operações feitas."
+            },
+        ]
+
+        self.dashboard_menu_view.set_dashboards([
+            {"key":"cockpit", "title":"Operações de Cockpit", "desc":"Acompanhamento de operações feitas."},
+            {"key":"cgm_ops", "title":"CGM — Operações", "desc":"Visão 360 de volumes, pendências e SLAs no CGM."},
+            {"key":"perf", "title":"Performance Comercial", "desc":"Receita, evolução mensal, ranking de agências.", "restricted": True},
+            # ...adicione mais metadados aqui
+        ])
+        self.dashboard_menu_view.open_dashboard.connect(self._open_dashboard)  # seu handler existente
+
+
+
         # Repo do Repique
         self.engine = get_engine()
         self.repique_repo = repique_repo or RepiqueRepository(self.engine)
@@ -72,6 +113,8 @@ class MainWindow(QMainWindow):
         root.addWidget(self.sidebar)
         self.sidebar_visible = True
         self.sidebar_locked = True
+        self.dashboard_menu_view.open_dashboard.connect(self._open_dashboard)
+        self.dashboard_view.go_back.connect(lambda: self._goto(self.dashboard_menu_view, "Dashboards"))
 
         # Conteúdo (Topbar + Stack)
         content = QVBoxLayout(); content.setSpacing(8)
@@ -88,6 +131,9 @@ class MainWindow(QMainWindow):
 
         user = os.getenv("USERNAME") or os.getenv("USER") or ""
         self.topbar.set_user(user)
+
+        self.stack.addWidget(self.dashboard_menu_view)
+        self.stack.addWidget(self.dashboard_view)
 
         root.addLayout(content)
 
@@ -238,6 +284,9 @@ class MainWindow(QMainWindow):
             self._go_repique()
         elif key == "cgm":
             self._go_cgm()
+        elif key == "dashboard":
+           self.dashboard_menu_view.reset_search()
+           self._goto(self.dashboard_menu_view, "Dashboards")
         else:
             Toast(self, f"{key} — em breve").show_at(self.width() - 260, 80)
             self._set_sidebar(False, False)
@@ -331,3 +380,21 @@ class MainWindow(QMainWindow):
             self._goto(self.lar_consulta_view, "LAR — Consulta")
         else:
             self._goto(self.lar_view, "LAR")
+
+        # --- Permissão: somente gestora ---
+
+    def _is_gestora_user(self) -> bool:
+        user = (os.getenv("USERNAME") or os.getenv("USER") or "").lower()
+        allowed = {"gestora", "admin"}  # ou ler de .env/config
+        return user in allowed
+
+    def _open_dashboard(self, key: str):
+        meta = next((m for m in self._dash_meta if m["key"] == key), None)
+        if not meta: 
+            Toast(self, "Dashboard indisponível").show_at(self.width()-260, 80)
+            return
+        if meta.get("restricted") and not self._is_gestora_user():
+            QMessageBox.warning(self, "Acesso restrito", "Este dashboard é exclusivo para usuários da gestora.")
+            return
+        self.dashboard_view.show_secure(meta["secure_url"])
+        self._goto(self.dashboard_view, meta["title"])

@@ -9,8 +9,8 @@ from app.core.i18n.i18n import I18n
 from app.core.theme.theme import ThemeManager
 from app.core.data.repique_repository import RepiqueRepository
 from app.ui.modules.auth.windows.login_window import LoginWindow
-
 from app.ui.main.main_window import MainWindow
+from PySide6.QtCore import Qt, QCoreApplication
 
 
 if __name__ == "__main__":
@@ -20,6 +20,7 @@ if __name__ == "__main__":
     theme = ThemeManager(app)
     theme.apply(ThemeManager.DARK)
     i18n = I18n()
+    QCoreApplication.setAttribute(Qt.AA_UseSoftwareOpenGL)
 
     # Tela de login (modal)
     login = LoginWindow(theme, i18n)
