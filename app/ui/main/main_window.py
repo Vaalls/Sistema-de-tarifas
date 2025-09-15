@@ -16,13 +16,18 @@ from app.ui.main.sidebar import Sidebar
 from app.ui.main.topbar import Topbar
 
 # Home / Repique
-from app.ui.modules.cgm.views.pacote import pacote_view
-from app.ui.modules.dashboard.views.dashboard_menu_view import DashboardMenuView
-from app.ui.modules.dashboard.views.dashboard_view import DashboardView
 from app.ui.modules.home.views.home_view import HomeView
 from app.ui.modules.analise_repique.views.repique_view import RepiqueView
 from app.core.data.repique_repository import RepiqueRepository
 from app.core.data.sqlserver import get_engine
+
+# Dashs
+from app.ui.modules.dashboard.views.dashboard_menu_view import DashboardMenuView
+from app.ui.modules.dashboard.views.dashboard_view import DashboardView
+
+# Docs
+from app.ui.modules.docs.views.docs_menu_view import DocsMenuView
+from app.ui.modules.docs.views.document_viewer import DocumentViewer
 
 # CGM (tela principal)
 from app.ui.modules.cgm.views.cgm_view import CgmView
@@ -94,6 +99,20 @@ class MainWindow(QMainWindow):
         ])
         self.dashboard_menu_view.open_dashboard.connect(self._open_dashboard)  # seu handler existente
 
+        self.docs_menu_view = DocsMenuView()
+        self.document_viewer = DocumentViewer()
+
+        # catálogo de documentos (exemplos)
+        self.docs_menu_view.set_docs([
+            {"key": "man_cgm", "title": "Manual do CGM", "path": r"C:\Users\Gabri\Downloads\dashboard.pdf"},
+            {"key": "repique_dic", "title": "Dicionário de dados — Repique", "path": r"C:\docs\repique_dic.csv"},
+            {"key": "tarifas_tabela", "title": "Tabela de Tarifas 2025", "path": r"C:\Users\Gabri\OneDrive\Área de Trabalho\Planilha_Financeira_2025.xlsx"}
+        ])
+
+        # conexões
+        self.docs_menu_view.open_doc.connect(lambda meta: (self.document_viewer.open_document(meta),
+                                                        self._goto(self.document_viewer, meta.get("title","Documento"))))
+        self.document_viewer.go_back.connect(lambda: self._goto(self.docs_menu_view, "Documentação"))
 
 
         # Repo do Repique
@@ -134,6 +153,8 @@ class MainWindow(QMainWindow):
 
         self.stack.addWidget(self.dashboard_menu_view)
         self.stack.addWidget(self.dashboard_view)
+        self.stack.addWidget(self.docs_menu_view)
+        self.stack.addWidget(self.document_viewer)
 
         root.addLayout(content)
 
@@ -287,6 +308,9 @@ class MainWindow(QMainWindow):
         elif key == "dashboard":
            self.dashboard_menu_view.reset_search()
            self._goto(self.dashboard_menu_view, "Dashboards")
+        elif key == "docs":
+            self.docs_menu_view.reset_search()
+            self._goto(self.docs_menu_view, "Documentação")
         else:
             Toast(self, f"{key} — em breve").show_at(self.width() - 260, 80)
             self._set_sidebar(False, False)

@@ -21,12 +21,12 @@ class Sidebar(QFrame):
         self.btn_repique   = QPushButton(self.i18n.tr("menu.repique"))
         self.btn_cgm       = QPushButton(self.i18n.tr("menu.cgm"))
         self.btn_fato      = QPushButton(self.i18n.tr("menu.fato"))
-        self.btn_cockpit   = QPushButton(self.i18n.tr("menu.cockpit"))
+        self.btn_docs   = QPushButton(self.i18n.tr("menu.docs"))
         self.btn_dashboard = QPushButton(self.i18n.tr("menu.dashboard"))
         self.btn_cancel    = QPushButton(self.i18n.tr("menu.cancel"))
 
         for b in (self.btn_home, self.btn_repique, self.btn_cgm, self.btn_fato,
-                  self.btn_cockpit, self.btn_dashboard, self.btn_cancel):
+                  self.btn_docs, self.btn_dashboard, self.btn_cancel):
             b.setMinimumHeight(36)
             b.setProperty("role", "sidebar")
             b.setCursor(Qt.PointingHandCursor)
@@ -40,6 +40,6 @@ class Sidebar(QFrame):
         self.btn_repique.clicked.connect(lambda: self.navigate.emit("repique"))
         self.btn_cgm.clicked.connect(lambda: self.navigate.emit("cgm"))
         self.btn_fato.clicked.connect(lambda: self.navigate.emit("fato"))
-        self.btn_cockpit.clicked.connect(lambda: self.navigate.emit("cockpit"))
+        self.btn_docs.clicked.connect(lambda: self.navigate.emit("docs"))
         self.btn_dashboard.clicked.connect(lambda: self.navigate.emit("dashboard"))
         self.btn_cancel.clicked.connect(lambda: self.navigate.emit("cancel"))
