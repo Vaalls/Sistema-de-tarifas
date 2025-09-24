@@ -58,32 +58,34 @@ class AlcadaCadastroView(QWidget):
 
         # Linha 0 (Data_Neg + Segmento + CNPJ)
         self.ed_data_neg = _date_ddmmyyyy()
-        add("Data_Neg", self.ed_data_neg, 0, 0)
-        add("Segmento", QLineEdit(),       0, 2, 1, 140)
+        add("DATA_NEG", self.ed_data_neg, 0, 0)
+        cb_segmento = QComboBox(); cb_segmento.addItems(["","EMPRESAS","MIDDLE","CORPORATE"])
+        add("SEGMENTO", cb_segmento, 0, 2)
         add("CNPJ",     QLineEdit(),       0, 4, 1, 160)
 
         # Linha 1 (AG/CC + Tarifa + Valores)
-        add("AG",       QLineEdit(),       1, 0, 1, 80)
-        add("CC",       QLineEdit(),       1, 2, 1, 140)
-        add("Tarifa",   QLineEdit(),       1, 4, 1, 100)
+        add("AGENCIA",       QLineEdit(),       1, 0, 1, 80)
+        add("CONTA",       QLineEdit(),       1, 2, 1, 140)
+        add("TARIFA",   QLineEdit(),       1, 4, 1, 100)
 
         sp_ref = QDoubleSpinBox(); sp_ref.setMaximum(10_000_000); sp_ref.setDecimals(2)
         sp_aut = QDoubleSpinBox(); sp_aut.setMaximum(10_000_000); sp_aut.setDecimals(2)
-        add("Vlr_Tar_Ref", sp_ref, 2, 0, 1, 120)
-        add("Vlr_Aut",     sp_aut, 2, 2, 1, 120)
+        add("VALOR_MAJORADO", sp_ref, 2, 0, 1, 120)
+        add("VALOR_REQUERIDO",     sp_aut, 2, 2, 1, 120)
 
-        add("Autorização", QLineEdit(),    2, 4, 1, 200)
+        add("AUTORIZACAO", QLineEdit(),    2, 4, 1, 200)
 
         # Linha 3 (Qtde de contratos + Prazo + Vencimento auto + Observação)
         sp_qtde = QSpinBox(); sp_qtde.setRange(0, 9999)
         self.sp_prazo = QSpinBox(); self.sp_prazo.setRange(0, 3650)  # dias
         self.ed_venc  = _date_ddmmyyyy(); self.ed_venc.setReadOnly(True)
 
-        add("Qtde_De_Contrato", sp_qtde, 3, 0, 1, 100)
-        add("Prazo (dias)",      self.sp_prazo, 3, 2, 1, 120)
-        add("Vencimento",        self.ed_venc,  3, 4)
+        add("QTDE", sp_qtde, 3, 0, 1, 100)
+        add("PRAZO",      self.sp_prazo, 3, 2, 1, 120)
+        add("VENCIMENTO",        self.ed_venc,  3, 4)
 
-        add("Observação", QLineEdit(),     4, 0, 7, 420)
+        add("OBSERVACAO", QLineEdit(),     4, 0, 7, 420)
+        add("CLIENTE", QLineEdit(),       5, 0, 7, 200)
 
         root.addLayout(g)
 
@@ -172,7 +174,7 @@ class AlcadaCadastroView(QWidget):
         d = self._collect()
 
         # valida mínimos para alçada
-        obrig = ["Data_Neg","CNPJ","AG","CC","Tarifa","Prazo"]
+        obrig = ["DATA_NEG","CNPJ","AGENCIA","CONTA","TARIFA","PRAZO"]
         faltam = [f for f in obrig if not d.get(f)]
         if faltam:
             QMessageBox.warning(self, "Campos obrigatórios", "Preencha: " + ", ".join(faltam))

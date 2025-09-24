@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
 )
-
 class EstornoView(QWidget):
     open_cadastro = Signal()
     open_consulta = Signal()
@@ -14,7 +13,7 @@ class EstornoView(QWidget):
 
     def __init__(self):
         super().__init__()
-        self._kpi1 = QLabel("0"); self._kpi2 = QLabel("0")
+        self._kpi1 = QLabel("1"); self._kpi2 = QLabel("0")
         self.table: QTableWidget
         self._build()
 
@@ -39,7 +38,7 @@ class EstornoView(QWidget):
 
     def _configure_recent_table(self, table: QTableWidget):
         table.setColumnCount(7)
-        table.setHorizontalHeaderLabels(["Usuário","Data","Cliente","CNPJ","AG","Conta",""])
+        table.setHorizontalHeaderLabels(["Responsavel","Data","Cliente","CNPJ","AG","Conta",""])
         table.verticalHeader().setVisible(False)
         hh = table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -81,7 +80,7 @@ class EstornoView(QWidget):
     def load_recent(self, rows: List[Dict[str,Any]]):
         self.table.setRowCount(len(rows or []))
         for r, it in enumerate(rows or []):
-            self.table.setItem(r,0,QTableWidgetItem(str(it.get("usuario",""))))
+            self.table.setItem(r,0,QTableWidgetItem(str(it.get("responsavel",""))))
             self.table.setItem(r,1,QTableWidgetItem(str(it.get("data",""))))
             self.table.setItem(r,2,QTableWidgetItem(str(it.get("cliente",""))))
             self.table.setItem(r,3,QTableWidgetItem(str(it.get("cnpj",""))))

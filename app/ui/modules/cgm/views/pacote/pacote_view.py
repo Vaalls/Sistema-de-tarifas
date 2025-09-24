@@ -1,9 +1,11 @@
+# app/ui/modules/cgm/views/pacote/pacote_view.py
 from __future__ import annotations
 from typing import List, Dict, Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
+    QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy,
+    QAbstractItemView
 )
 
 class PacoteView(QWidget):
@@ -31,20 +33,24 @@ class PacoteView(QWidget):
 
     def _configure_recent_table(self, table: QTableWidget):
         table.setColumnCount(7)
-        table.setHorizontalHeaderLabels(["Usuário","Data","Cliente","CNPJ","AG","CC",""])
+        table.setHorizontalHeaderLabels(["Data","Cliente","Segmento","CNPJ","AG","CC",""])
         table.verticalHeader().setVisible(False)
+        
         hh=table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.Interactive)
+        hh.setSectionResizeMode(2, QHeaderView.Interactive)
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(4, QHeaderView.Stretch)
+        hh.setSectionResizeMode(5, QHeaderView.Stretch)
         hh.setSectionResizeMode(6, QHeaderView.Fixed)
         table.setColumnWidth(6,130)
-        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         table.setMinimumHeight(280)
+        # >>> Somente visível
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.NoSelection)
+        table.setFocusPolicy(Qt.NoFocus)
 
     def _build(self):
         root=QVBoxLayout(self); root.setSpacing(18); root.setAlignment(Qt.AlignTop)
@@ -60,7 +66,7 @@ class PacoteView(QWidget):
         t=QLabel("Últimos cadastros"); t.setStyleSheet("font-weight:700; font-size:16px; background:transparent;")
         l.addWidget(t,0,Qt.AlignHCenter)
 
-        self.table=QTableWidget(0,7)
+        self.table=QTableWidget(0,6)
         self._configure_recent_table(self.table)
         l.addWidget(self.table)
 
@@ -69,9 +75,9 @@ class PacoteView(QWidget):
     def load_recent(self, rows: List[Dict[str,Any]]):
         self.table.setRowCount(len(rows or []))
         for r,it in enumerate(rows or []):
-            self.table.setItem(r,0,QTableWidgetItem(str(it.get("usuario",""))))
-            self.table.setItem(r,1,QTableWidgetItem(str(it.get("data",""))))
-            self.table.setItem(r,2,QTableWidgetItem(str(it.get("cliente",""))))
+            self.table.setItem(r,0,QTableWidgetItem(str(it.get("data",""))))
+            self.table.setItem(r,1,QTableWidgetItem(str(it.get("cliente",""))))
+            self.table.setItem(r,2,QTableWidgetItem(str(it.get("segmento",""))))
             self.table.setItem(r,3,QTableWidgetItem(str(it.get("cnpj",""))))
             self.table.setItem(r,4,QTableWidgetItem(str(it.get("ag",""))))
             self.table.setItem(r,5,QTableWidgetItem(str(it.get("cc",""))))
@@ -83,3 +89,4 @@ class PacoteView(QWidget):
             filtros={"Segmento":it.get("segmento",""),"Cliente":it.get("cliente",""),
                      "CNPJ":it.get("cnpj",""),"AG":it.get("ag","")}
             btn.clicked.connect(lambda _=None,f=filtros: self.open_registro.emit(f))
+

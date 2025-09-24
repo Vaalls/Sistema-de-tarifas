@@ -7,13 +7,23 @@ import os
 
 from PySide6.QtCore import Slot
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QMessageBox
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QMessageBox
+)
 
+from app.core.data.cgm.lar_repository import LarRepository
 from app.core.i18n.i18n import I18n
 from app.core.theme.theme import ThemeManager
 from app.ui.components.toasts import Toast
 from app.ui.main.sidebar import Sidebar
 from app.ui.main.topbar import Topbar
+
+# Repositories (um por tabela)
+from app.core.data.cgm.estorno_repository import EstornoRepository
+from app.core.data.cgm.alcada_repository import AlcadaRepository
+
+from app.core.data.cgm.multas_repository import MultasRepository
+from app.core.data.cgm.pacote_repository import PacoteRepository
 
 # Home / Repique
 from app.ui.modules.home.views.home_view import HomeView
@@ -21,11 +31,11 @@ from app.ui.modules.analise_repique.views.repique_view import RepiqueView
 from app.core.data.repique_repository import RepiqueRepository
 from app.core.data.sqlserver import get_engine
 
-# Dashs
+# Dashboards
 from app.ui.modules.dashboard.views.dashboard_menu_view import DashboardMenuView
 from app.ui.modules.dashboard.views.dashboard_view import DashboardView
 
-# Docs
+# Documentação
 from app.ui.modules.docs.views.docs_menu_view import DocsMenuView
 from app.ui.modules.docs.views.document_viewer import DocumentViewer
 
@@ -62,11 +72,17 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(self.i18n.tr("app.title"))
         self.resize(1200, 800)
 
-                # --- Dashboards ---
+        # ---------- Repos ----------
+        self.repo_estorno = EstornoRepository()
+        self.repo_pacote  = PacoteRepository()
+        self.repo_multas  = MultasRepository()
+        self.repo_alcada  = AlcadaRepository()
+        self.repo_lar     = LarRepository()
+
+        # ---------- Dashboards ----------
         self.dashboard_menu_view = DashboardMenuView()
         self.dashboard_view = DashboardView()
 
-                # ---- Dashboard module ----
         self._dash_meta = [
             {
                 "key": "cgm_ops",
@@ -79,7 +95,7 @@ class MainWindow(QMainWindow):
                 "key": "comercial",
                 "title": "Performance Comercial",
                 "secure_url": "https://app.powerbi.com/reportEmbed?reportId=GUID2&groupId=GUID_WORKSPACE&autoAuth=true&ctid=TENANT_GUID",
-                "restricted": True,  # ⬅ “somente gestora”
+                "restricted": True,  # somente gestora
                 "desc": "Receita, evolução mensal, ranking de agências."
             },
             {
@@ -95,31 +111,29 @@ class MainWindow(QMainWindow):
             {"key":"cockpit", "title":"Operações de Cockpit", "desc":"Acompanhamento de operações feitas."},
             {"key":"cgm_ops", "title":"CGM — Operações", "desc":"Visão 360 de volumes, pendências e SLAs no CGM."},
             {"key":"perf", "title":"Performance Comercial", "desc":"Receita, evolução mensal, ranking de agências.", "restricted": True},
-            # ...adicione mais metadados aqui
         ])
-        self.dashboard_menu_view.open_dashboard.connect(self._open_dashboard)  # seu handler existente
+        self.dashboard_menu_view.open_dashboard.connect(self._open_dashboard)
+        self.dashboard_view.go_back.connect(lambda: self._goto(self.dashboard_menu_view, "Dashboards"))
 
+        # ---------- Documentação ----------
         self.docs_menu_view = DocsMenuView()
         self.document_viewer = DocumentViewer()
-
-        # catálogo de documentos (exemplos)
         self.docs_menu_view.set_docs([
             {"key": "man_cgm", "title": "Manual do CGM", "path": r"C:\Users\Gabri\Downloads\dashboard.pdf"},
             {"key": "repique_dic", "title": "Dicionário de dados — Repique", "path": r"C:\docs\repique_dic.csv"},
             {"key": "tarifas_tabela", "title": "Tabela de Tarifas 2025", "path": r"C:\Users\Gabri\OneDrive\Área de Trabalho\Planilha_Financeira_2025.xlsx"}
         ])
-
-        # conexões
-        self.docs_menu_view.open_doc.connect(lambda meta: (self.document_viewer.open_document(meta),
-                                                        self._goto(self.document_viewer, meta.get("title","Documento"))))
+        self.docs_menu_view.open_doc.connect(
+            lambda meta: (self.document_viewer.open_document(meta),
+                          self._goto(self.document_viewer, meta.get("title", "Documento")))
+        )
         self.document_viewer.go_back.connect(lambda: self._goto(self.docs_menu_view, "Documentação"))
 
-
-        # Repo do Repique
+        # ---------- Repo Repique ----------
         self.engine = get_engine()
         self.repique_repo = repique_repo or RepiqueRepository(self.engine)
 
-        # ---------- layout principal ----------
+        # ---------- Layout principal ----------
         central = QWidget()
         root = QHBoxLayout(central)
         root.setContentsMargins(8, 8, 8, 8)
@@ -132,17 +146,15 @@ class MainWindow(QMainWindow):
         root.addWidget(self.sidebar)
         self.sidebar_visible = True
         self.sidebar_locked = True
-        self.dashboard_menu_view.open_dashboard.connect(self._open_dashboard)
-        self.dashboard_view.go_back.connect(lambda: self._goto(self.dashboard_menu_view, "Dashboards"))
 
-        # Conteúdo (Topbar + Stack)
-        content = QVBoxLayout(); content.setSpacing(8)
-
+        # Conteúdo
+        content = QVBoxLayout()
+        content.setSpacing(8)
         self.topbar = Topbar(i18n)
         content.addWidget(self.topbar)
-
         self.stack = QStackedWidget()
         content.addWidget(self.stack)
+        root.addLayout(content)
 
         self.topbar.set_menu_enabled(False)
         self.topbar.sidebar_toggle_requested.connect(self._toggle_sidebar)
@@ -151,14 +163,8 @@ class MainWindow(QMainWindow):
         user = os.getenv("USERNAME") or os.getenv("USER") or ""
         self.topbar.set_user(user)
 
-        self.stack.addWidget(self.dashboard_menu_view)
-        self.stack.addWidget(self.dashboard_view)
-        self.stack.addWidget(self.docs_menu_view)
-        self.stack.addWidget(self.document_viewer)
-
-        root.addLayout(content)
-
         # ---------- Views ----------
+        # Home / Repique / CGM
         self.home_view = HomeView(i18n)
         self.repique_view = RepiqueView(i18n, repo=self.repique_repo)
         self.cgm_view = CgmView()
@@ -179,12 +185,26 @@ class MainWindow(QMainWindow):
 
         # Consultas
         self.estorno_consulta_view = EstornoConsultaView()
-        self.pacote_consulta_view = PacoteConsultaView()
-        self.multas_consulta_view = MultasConsultaView()
-        self.alcada_consulta_view = AlcadaConsultaView()
-        self.lar_consulta_view = LarConsultaView()
+        self.pacote_consulta_view  = PacoteConsultaView()
+        self.multas_consulta_view  = MultasConsultaView()
+        self.alcada_consulta_view  = AlcadaConsultaView()
+        self.lar_consulta_view     = LarConsultaView()
 
-        # Empilha
+        # Injeta repos nas CONSULTAS
+        self.estorno_consulta_view.attach_repo(self.repo_estorno)
+        self.pacote_consulta_view.attach_repo(self.repo_pacote)
+        self.multas_consulta_view.attach_repo(self.repo_multas)
+        self.alcada_consulta_view.attach_repo(self.repo_alcada)
+        self.lar_consulta_view.attach_repo(self.repo_lar)
+
+        # ---------- Empilha na ordem desejada ----------
+        # Dash/Docs primeiro (são módulos independentes)
+        self.stack.addWidget(self.dashboard_menu_view)
+        self.stack.addWidget(self.dashboard_view)
+        self.stack.addWidget(self.docs_menu_view)
+        self.stack.addWidget(self.document_viewer)
+
+        # Demais
         for w in [
             self.home_view, self.repique_view, self.cgm_view,
             self.estorno_view, self.pacote_view, self.multas_view, self.alcada_view, self.lar_view,
@@ -202,12 +222,12 @@ class MainWindow(QMainWindow):
         self.sidebar.navigate.connect(self.on_navigate)
         self.home_view.new_repique.connect(self._go_repique)
 
-        # CGM principal → submenus
-        self.cgm_view.open_estorno.connect(lambda: self._goto(self.estorno_view, "Estorno"))
-        self.cgm_view.open_pacote.connect(lambda: self._goto(self.pacote_view, "Pacote de Tarifas"))
-        self.cgm_view.open_multas.connect(lambda: self._goto(self.multas_view, "Multas e Comissões"))
-        self.cgm_view.open_alcada.connect(lambda: self._goto(self.alcada_view, "Negociação com Alçada"))
-        self.cgm_view.open_lar.connect(lambda: self._goto(self.lar_view, "LAR"))
+        # CGM principal → submenus (carregam “últimos”)
+        self.cgm_view.open_estorno.connect(self._open_estorno_menu)
+        self.cgm_view.open_pacote.connect(self._open_pacote_menu)
+        self.cgm_view.open_multas.connect(self._open_multas_menu)
+        self.cgm_view.open_alcada.connect(self._open_alcada_menu)
+        self.cgm_view.open_lar.connect(self._open_lar_menu)
 
         # Menus → voltar ao CGM
         self.estorno_view.go_back.connect(self._go_cgm)
@@ -228,7 +248,7 @@ class MainWindow(QMainWindow):
         self.lar_view.open_cadastro.connect(lambda: self._goto(self.lar_cadastro_view, "LAR — Cadastro"))
         self.lar_view.open_consulta.connect(lambda: self._goto(self.lar_consulta_view, "LAR — Consulta"))
 
-        # “Visualizar” a partir da lista de últimos cadastros (prefill + navega)
+        # “Visualizar” a partir dos últimos cadastros (prefill + navega)
         self.estorno_view.open_registro.connect(lambda f: self._prefill_and_go(self.estorno_consulta_view, "Estorno — Consulta", f))
         self.pacote_view.open_registro.connect(lambda f: self._prefill_and_go(self.pacote_consulta_view, "Pacote de Tarifas — Consulta", f))
         self.multas_view.open_registro.connect(lambda f: self._prefill_and_go(self.multas_consulta_view, "Multas e Comissões — Consulta", f))
@@ -236,19 +256,19 @@ class MainWindow(QMainWindow):
         self.lar_view.open_registro.connect(   lambda f: self._prefill_and_go(self.lar_consulta_view,    "LAR — Consulta", f))
 
         # Cadastros → sucesso/cancelar
-        # ESTORNO
+        # Estorno
         self.estorno_cadastro_view.saved_view.connect(lambda d: self._after_estorno_saved(d, go_visual=True))
         self.estorno_cadastro_view.saved_close.connect(lambda d: self._after_estorno_saved(d, go_visual=False))
         self.estorno_cadastro_view.cancelled.connect(lambda: self._goto(self.estorno_view, "Estorno"))
-        # PACOTE
+        # Pacote
         self.pacote_cadastro_view.saved_view.connect(lambda d: self._after_pacote_saved(d, go_visual=True))
         self.pacote_cadastro_view.saved_close.connect(lambda d: self._after_pacote_saved(d, go_visual=False))
         self.pacote_cadastro_view.cancelled.connect(lambda: self._goto(self.pacote_view, "Pacote de Tarifas"))
-        # MULTAS
+        # Multas
         self.multas_cadastro_view.saved_view.connect(lambda d: self._after_multas_saved(d, go_visual=True))
         self.multas_cadastro_view.saved_close.connect(lambda d: self._after_multas_saved(d, go_visual=False))
         self.multas_cadastro_view.cancelled.connect(lambda: self._goto(self.multas_view, "Multas e Comissões"))
-        # ALCADA
+        # Alçada
         self.alcada_cadastro_view.saved_view.connect(lambda d: self._after_alcada_saved(d, go_visual=True))
         self.alcada_cadastro_view.saved_close.connect(lambda d: self._after_alcada_saved(d, go_visual=False))
         self.alcada_cadastro_view.cancelled.connect(lambda: self._goto(self.alcada_view, "Negociação com Alçada"))
@@ -266,6 +286,42 @@ class MainWindow(QMainWindow):
 
         # atalhos
         self._setup_shortcuts()
+
+    # ----- Menus: abrir e recarregar últimos cadastros -----
+    def _open_estorno_menu(self):
+        try:
+            self.estorno_view.load_recent(self.repo_estorno.recent(limit=20))
+        except Exception as e:
+            Toast(self, f"Estorno: erro ao carregar: {e}").show_at(self.width()-260, 80)
+        self._goto(self.estorno_view, "Estorno")
+
+    def _open_pacote_menu(self):
+        try:
+            self.pacote_view.load_recent(self.repo_pacote.recent(limit=20))
+        except Exception as e:
+            Toast(self, f"Pacote: erro ao carregar: {e}").show_at(self.width()-260, 80)
+        self._goto(self.pacote_view, "Pacote de Tarifas")
+
+    def _open_multas_menu(self):
+        try:
+            self.multas_view.load_recent(self.repo_multas.recent(limit=20))
+        except Exception as e:
+            Toast(self, f"Multas: erro ao carregar: {e}").show_at(self.width()-260, 80)
+        self._goto(self.multas_view, "Multas e Comissões")
+
+    def _open_alcada_menu(self):
+        try:
+            self.alcada_view.load_recent(self.repo_alcada.recent(limit=20))
+        except Exception as e:
+            Toast(self, f"Alçada: erro ao carregar: {e}").show_at(self.width()-260, 80)
+        self._goto(self.alcada_view, "Negociação com Alçada")
+
+    def _open_lar_menu(self):
+        try:
+            self.lar_view.load_recent(self.repo_lar.recent(limit=20))
+        except Exception as e:
+            Toast(self, f"LAR: erro ao carregar: {e}").show_at(self.width()-260, 80)
+        self._goto(self.lar_view, "LAR")
 
     # -------- Navegação básica --------
     @Slot()
@@ -306,8 +362,8 @@ class MainWindow(QMainWindow):
         elif key == "cgm":
             self._go_cgm()
         elif key == "dashboard":
-           self.dashboard_menu_view.reset_search()
-           self._goto(self.dashboard_menu_view, "Dashboards")
+            self.dashboard_menu_view.reset_search()
+            self._goto(self.dashboard_menu_view, "Dashboards")
         elif key == "docs":
             self.docs_menu_view.reset_search()
             self._goto(self.docs_menu_view, "Documentação")
@@ -326,14 +382,19 @@ class MainWindow(QMainWindow):
     # ---------- helpers ----------
     def _prefill_and_go(self, consulta_view: QWidget, title: str, filtros: dict):
         try:
-            # todas as consultas implementam prefill(**dict)
             consulta_view.prefill(filtros, autorun=True)
         except Exception:
             pass
         self._goto(consulta_view, title)
 
-    # -------- Pós-cadastro → ir para consulta com filtros preenchidos --------
+    # -------- Pós-cadastro → salvar e navegar --------
     def _after_estorno_saved(self, d: dict, go_visual: bool):
+        try:
+            self.repo_estorno.insert(d)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao salvar Estorno: {e}")
+            return
+
         if go_visual:
             try:
                 self.estorno_consulta_view.prefill({
@@ -345,9 +406,14 @@ class MainWindow(QMainWindow):
                 pass
             self._goto(self.estorno_consulta_view, "Estorno — Consulta")
         else:
-            self._goto(self.estorno_view, "Estorno")
+            self._open_estorno_menu()
 
     def _after_pacote_saved(self, d: dict, go_visual: bool):
+        try:
+            self.repo_pacote.insert(d)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao salvar Pacote: {e}")
+            return
         if go_visual:
             try:
                 self.pacote_consulta_view.prefill({
@@ -360,9 +426,14 @@ class MainWindow(QMainWindow):
                 pass
             self._goto(self.pacote_consulta_view, "Pacote de Tarifas — Consulta")
         else:
-            self._goto(self.pacote_view, "Pacote de Tarifas")
+            self._open_pacote_menu()
 
     def _after_multas_saved(self, d: dict, go_visual: bool):
+        try:
+            self.repo_multas.insert(d)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao salvar Multas: {e}")
+            return
         if go_visual:
             try:
                 self.multas_consulta_view.prefill({
@@ -374,9 +445,14 @@ class MainWindow(QMainWindow):
                 pass
             self._goto(self.multas_consulta_view, "Multas e Comissões — Consulta")
         else:
-            self._goto(self.multas_view, "Multas e Comissões")
+            self._open_multas_menu()
 
     def _after_alcada_saved(self, d: dict, go_visual: bool):
+        try:
+            self.repo_alcada.insert(d)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao salvar Alçada: {e}")
+            return
         if go_visual:
             try:
                 self.alcada_consulta_view.prefill({
@@ -389,9 +465,14 @@ class MainWindow(QMainWindow):
                 pass
             self._goto(self.alcada_consulta_view, "Negociação com Alçada — Consulta")
         else:
-            self._goto(self.alcada_view, "Negociação com Alçada")
+            self._open_alcada_menu()
 
     def _after_lar_saved(self, d: dict, go_visual: bool):
+        try:
+            self.repo_lar.insert(d)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Falha ao salvar LAR: {e}")
+            return
         if go_visual:
             try:
                 self.lar_consulta_view.prefill({
@@ -403,10 +484,9 @@ class MainWindow(QMainWindow):
                 pass
             self._goto(self.lar_consulta_view, "LAR — Consulta")
         else:
-            self._goto(self.lar_view, "LAR")
+            self._open_lar_menu()
 
-        # --- Permissão: somente gestora ---
-
+    # --- Permissão: somente gestora ---
     def _is_gestora_user(self) -> bool:
         user = (os.getenv("USERNAME") or os.getenv("USER") or "").lower()
         allowed = {"gestora", "admin"}  # ou ler de .env/config
@@ -414,7 +494,7 @@ class MainWindow(QMainWindow):
 
     def _open_dashboard(self, key: str):
         meta = next((m for m in self._dash_meta if m["key"] == key), None)
-        if not meta: 
+        if not meta:
             Toast(self, "Dashboard indisponível").show_at(self.width()-260, 80)
             return
         if meta.get("restricted") and not self._is_gestora_user():

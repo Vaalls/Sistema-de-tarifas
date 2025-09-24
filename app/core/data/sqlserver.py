@@ -1,62 +1,80 @@
 # app/core/data/sqlserver.py
 from __future__ import annotations
 import os
-from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def _build_conn_str() -> str:
-    """
-    Monta a connection string mssql+pyodbc.
-    Prioriza variáveis HOST/DB/USER/PASSWORD; se existir DSN, usa DSN.
-    """
-    dsn = os.getenv("MSSQL_DSN")
-    driver = os.getenv("MSSQL_DRIVER", "ODBC Driver 18 for SQL Server")
-    trust = os.getenv("MSSQL_TRUST_CERT", "yes")
-    timeout = int(os.getenv("MSSQL_TIMEOUT", "5"))
+def _detect_driver(preferred: str | None = None) -> str:
+    """Retorna o nome exato de um driver ODBC instalado."""
+    available = set()
+    try:
+        import pyodbc
+        available = set(pyodbc.drivers())
+    except Exception:
+        pass
 
-    if dsn:
-        # DSN já criado no ODBC do Windows
-        return f"mssql+pyodbc:///?odbc_connect=DSN={dsn};TrustServerCertificate={trust};LoginTimeout={timeout}"
+    candidates = [
+        preferred or os.getenv("MSSQL_DRIVER", None),
+        "ODBC Driver 18 for SQL Server",
+        "ODBC Driver 17 for SQL Server",
+        "SQL Server",
+    ]
+    for name in filter(None, candidates):
+        if name in available:
+            return name
 
-    host = os.getenv("MSSQL_HOST", "localhost")
-    db   = os.getenv("MSSQL_DB", "BancoCGM")
-    user = os.getenv("MSSQL_USER", "")
-    pwd  = os.getenv("MSSQL_PASSWORD", "")
+    # fallback: usa o preferido/18 mesmo que não detecte (útil em ambientes sem pyodbc.drivers())
+    return preferred or os.getenv("MSSQL_DRIVER") or "ODBC Driver 18 for SQL Server"
 
-    # pyodbc connection string URL-encoded (deixamos simples, pois o SQLAlchemy faz o encoding)
-    return (
-        "mssql+pyodbc://"
-        f"{user}:{pwd}@{host}/{db}"
-        f"?driver={driver.replace(' ', '+')}"
-        f"&TrustServerCertificate={trust}"
-        f"&LoginTimeout={timeout}"
-    )
 
-@lru_cache(maxsize=1)
 def get_engine() -> Any:
     """
-    Retorna um engine SQLAlchemy conectado ao SQL Server.
-    Usa pool de conexões e echo desativado.
+    Cria engine do SQL Server com pyodbc + SQLAlchemy.
+    .env suportado:
+        MSSQL_SERVER=GABRIELVALLS
+        MSSQL_DATABASE=BancoCGM
+        MSSQL_TRUSTED=true            # autenticação do Windows
+        # ou, se usar SQL auth:
+        MSSQL_USER=sa
+        MSSQL_PASSWORD=...
+        MSSQL_DRIVER=ODBC Driver 18 for SQL Server
     """
-    conn_str = _build_conn_str()
-    engine = create_engine(
-        conn_str,
-        pool_pre_ping=True,
-        pool_recycle=1800,
-        echo=False,
+    server   = os.getenv("MSSQL_SERVER",   "GABRIELVALLS")
+    database = os.getenv("MSSQL_DATABASE", "BancoCGM")
+    trusted  = os.getenv("MSSQL_TRUSTED",  "true").lower() in ("1", "true", "yes")
+    user     = os.getenv("MSSQL_USER",     "")
+    password = os.getenv("MSSQL_PASSWORD", "")
+
+    driver   = _detect_driver()
+    driver_q = driver.replace(" ", "+")
+
+    # Parâmetros extras (Driver 18 exige Encrypt, senão dá erro de certificado)
+    params = f"driver={driver_q}"
+    if "18+for+SQL+Server" in driver_q:
+        params += "&Encrypt=yes&TrustServerCertificate=yes"
+    else:
+        params += "&TrustServerCertificate=yes"
+
+    if trusted:
+        # Autenticação integrada do Windows
+        url = f"mssql+pyodbc://@{server}/{database}?{params}&trusted_connection=yes"
+    else:
+        # Usuário/senha SQL
+        url = f"mssql+pyodbc://{user}:{password}@{server}/{database}?{params}"
+
+    return create_engine(
+        url,
         future=True,
-        fast_executemany=True,   # acelera inserts em lote
+        pool_pre_ping=True,
+        fast_executemany=True,
     )
-    # ping leve (opcional)
-    try:
-        with engine.connect() as con:
-            con.execute(text("SELECT 1"))
-    except Exception as e:
-        # Logue o erro e deixe subir (para ficar visível no app)
-        print("[MSSQL] Falha na conexão:", e)
-        raise
-    return engine
+
+
+# Opcional: teste rápido que você pode chamar no boot se quiser
+def quick_test() -> None:
+    eng = get_engine()
+    with eng.connect() as con:
+        con.execute(text("SELECT 1"))

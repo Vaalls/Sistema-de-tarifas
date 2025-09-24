@@ -26,7 +26,8 @@ def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
     if d.lineEdit(): d.lineEdit().setInputMask("99/99/9999")
     return d
 
-FIELDS_PACOTE = ["Data_Neg","Segmento","Cliente","CNPJ","Pacote","AG","CC","Prazo","Data_Rev","Motivo","Tipo"]
+# acrescentei OBS aqui para o import em massa (opcional)
+FIELDS_PACOTE = ["Data_Neg","Segmento","Cliente","CNPJ","Pacote","AG","CC","Prazo","Data_Rev","Motivo","Tipo","OBS"]
 
 
 class PacoteCadastroView(QWidget):
@@ -49,23 +50,53 @@ class PacoteCadastroView(QWidget):
             labw = QLabel(lab); labw.setStyleSheet("background:transparent;")
             w.setMinimumWidth(minw)
             self.inputs[lab] = w
-            form.addWidget(labw, r, c); form.addWidget(w, r, c+1, 1, span)
+            form.addWidget(labw, r, c)
+            form.addWidget(w,   r, c+1, 1, span)
 
-        r=0
-        add(r,0,"Data_Neg", _date_ddmmyyyy()); 
-        cb_segmento = QComboBox(); cb_segmento.addItems(["PJ","PME","Corporate"])
-        add(r,2,"Segmento", cb_segmento, 140); r+=1
+        # ---- Disposição ----
+        r = 0
+        # linha 0: Data / Segmento / Tipo
+        self.ed_data_neg = _date_ddmmyyyy()
+        add(r, 0, "DATA_NEG", self.ed_data_neg); r += 1
+        cb_segmento = QComboBox(); cb_segmento.addItems(["","OUTROS","CAPTAÇÃO","LARGE","EMPRESA","CORPORATE","MIDDLE"])
+        add(r, 2, "SEGMENTO", cb_segmento, 160); r += 1
 
-        add(r,0,"Cliente",  QLineEdit(), 260); add(r,2,"CNPJ", QLineEdit(), 160); r+=1
-        add(r,0,"Pacote",   QLineEdit(), 240); add(r,2,"AG",   QLineEdit(), 100); r+=1
-        add(r,0,"CC",       QLineEdit(), 140); sp_prazo = QSpinBox(); sp_prazo.setRange(0, 3650)
-        add(r,2,"Prazo",    sp_prazo, 120); r+=1
-        add(r,0,"Data_Rev", _date_ddmmyyyy()); add(r,2,"Motivo", QLineEdit(), 220); r+=1
-        cb_tipo = QComboBox(); cb_tipo.addItems(["Novo","Renovação","Revisão"])
-        add(r,0,"Tipo", cb_tipo, 140)
+        # linha 1: Cliente (largo) + CNPJ
+        add(r, 0, "CLIENTE", QLineEdit(), 360, span=3)  # ocupa colunas 1..3
+        add(r, 4, "CNPJ",    QLineEdit(), 160); r += 1
+
+        # linha 2: AG / CC / Pacote
+        add(r, 0, "AGENCIA",     QLineEdit(), 100)
+        add(r, 2, "CONTA",     QLineEdit(), 100)
+        cb_pacote = QComboBox(); cb_pacote.addItems(["","901","902","903","904","905","906","907","908"])
+        add(r, 4, "PACOTE", cb_pacote, 140); r += 1
+
+        self.ed_venc = _date_ddmmyyyy(); self.ed_venc.setReadOnly(True)
+
+        # linha 3: Prazo / Data_Rev / Status
+        self.sp_prazo = QSpinBox(); self.sp_prazo.setRange(0, 3650)
+        add(r, 0, "PRAZO", self.sp_prazo, 100)
+        add(r, 2, "DATA_REV", self.ed_venc, 140)
+        cb_status = QComboBox(); cb_status.addItems([
+            "","Outros","Migração Pct cli Investidor","Conta com Restrição","Conta sem Movimentação",
+            "Conta Encerrada/Prevista","DE/PARA","Solicitação do Cliente","Alteração de Pacote"
+        ])
+        add(r, 4, "STATUS", cb_status, 220); r += 1
+
+        # linha 4: Motivo (largo)
+        cb_motivo = QComboBox(); cb_motivo.addItems([
+            "","ERRO OPERACIONAL","ERRO DE SISTEMA","COMERCIAL","ARQUIVADO","PENDENTE DE DOM","RECEPCIONADO",
+            "RECUSADO","CLIENTE APLICADOR","ENCERRAMENTO DE CONTA","PACOTE ATIVO","TARIFA DEVIDA","CREDITADO",
+            "DEVOLVIDO","ENCAMINHADO","FRANQUIA"
+        ])
+        add(r, 0, "MOTIVO", cb_motivo, 300, span=5); r += 1
+
+        # linha 5: OBS (bem largo)
+        add(r, 0, "OBS", QLineEdit(), 420, span=5); r += 1
 
         root.addLayout(form)
 
+        # Ações
         actions = QHBoxLayout(); actions.addStretch()
         bt_clear = _btn("Limpar", accent=False)
         bt_cancel= _btn("Cancelar", accent=False)
@@ -79,6 +110,10 @@ class PacoteCadastroView(QWidget):
         bt_cancel.clicked.connect(self._on_cancel)
         bt_save.clicked.connect(self._on_save)
         bt_mass.clicked.connect(lambda: MassImportDialog("Pacote de Tarifas", FIELDS_PACOTE, self).exec())
+
+        self.ed_data_neg.dateChanged.connect(self._recalc_vencimento)
+        self.sp_prazo.valueChanged.connect(self._recalc_vencimento)
+        self._recalc_vencimento()  # inicial
 
     # Helpers
     def _collect(self) -> Dict[str,str]:
@@ -118,7 +153,7 @@ class PacoteCadastroView(QWidget):
     @Slot()
     def _on_save(self):
         d = self._collect()
-        falta = [f for f in ("Cliente","CNPJ","Pacote","AG","CC") if not d.get(f)]
+        falta = [f for f in ("CLIENTE","CNPJ","PACOTE","AGENCIA","CONTA") if not d.get(f)]
         if falta:
             QMessageBox.warning(self,"Campos obrigatórios","Preencha: " + ", ".join(falta)); return
 
@@ -131,8 +166,15 @@ class PacoteCadastroView(QWidget):
         self._clear()
         self.saved.emit(d)
         if m.clickedButton() is vis: self.saved_view.emit(d)
-        else:                         self.saved_close.emit(d)
+        else:                        
+            self.saved_close.emit(d)
 
     def hideEvent(self, ev):
         try: self._clear()
         finally: super().hideEvent(ev)
+
+    @Slot()
+    def _recalc_vencimento(self):
+        base = self.ed_data_neg.date()
+        dias = int(self.sp_prazo.value())
+        self.ed_venc.setDate(base.addDays(dias))
