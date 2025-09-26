@@ -25,7 +25,7 @@ class MultasView(QWidget):
 
     def _configure_recent_table(self, table: QTableWidget):
         table.setColumnCount(6)
-        table.setHorizontalHeaderLabels(["Usuário","Data","Cliente","Segmento","CNPJ",""])
+        table.setHorizontalHeaderLabels(["Data","Cliente","Segmento","CNPJ","Autorização",""])
         table.verticalHeader().setVisible(False)
         hh=table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -37,6 +37,11 @@ class MultasView(QWidget):
         table.setColumnWidth(5,130)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.setMinimumHeight(280)
+
+        # >>> Somente visível
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.NoSelection)
+        table.setFocusPolicy(Qt.NoFocus)
 
     def _build(self):
         root=QVBoxLayout(self); root.setSpacing(18); root.setAlignment(Qt.AlignTop)
@@ -60,15 +65,16 @@ class MultasView(QWidget):
     def load_recent(self, rows: List[Dict[str,Any]]):
         self.table.setRowCount(len(rows or []))
         for r,it in enumerate(rows or []):
-            self.table.setItem(r,0,QTableWidgetItem(str(it.get("usuario",""))))
-            self.table.setItem(r,1,QTableWidgetItem(str(it.get("data",""))))
-            self.table.setItem(r,2,QTableWidgetItem(str(it.get("cliente",""))))
-            self.table.setItem(r,3,QTableWidgetItem(str(it.get("segmento",""))))
-            self.table.setItem(r,4,QTableWidgetItem(str(it.get("cnpj",""))))
+            self.table.setItem(r,0,QTableWidgetItem(str(it.get("data",""))))
+            self.table.setItem(r,1,QTableWidgetItem(str(it.get("cliente",""))))
+            self.table.setItem(r,2,QTableWidgetItem(str(it.get("segmento",""))))
+            self.table.setItem(r,3,QTableWidgetItem(str(it.get("cnpj",""))))
+            self.table.setItem(r,4,QTableWidgetItem(str(it.get("autorizacao",""))))
 
             btn=self._gold("Visualizar",120,36)
             wrap=QWidget(); h=QHBoxLayout(wrap); h.setContentsMargins(0,0,0,0); h.addStretch(); h.addWidget(btn)
             self.table.setCellWidget(r,5,wrap)
 
-            filtros={"Segmento":it.get("segmento",""),"Cliente":it.get("cliente",""),"CNPJ":it.get("cnpj","")}
+            filtros={"Segmento":it.get("segmento",""),"Cliente":it.get("cliente",""),"CNPJ":it.get("cnpj",""),
+                     "Autorização":it.get("autorizacao","")}
             btn.clicked.connect(lambda _=None,f=filtros: self.open_registro.emit(f))

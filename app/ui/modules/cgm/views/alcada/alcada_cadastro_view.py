@@ -30,7 +30,6 @@ def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
     d.lineEdit().setInputMask("99/99/9999")
     return d
 
-
 class AlcadaCadastroView(QWidget):
     saved = Signal(dict)
     saved_view = Signal(dict)
