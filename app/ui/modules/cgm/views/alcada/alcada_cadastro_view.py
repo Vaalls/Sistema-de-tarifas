@@ -69,9 +69,8 @@ class AlcadaCadastroView(QWidget):
 
         sp_ref = QDoubleSpinBox(); sp_ref.setMaximum(10_000_000); sp_ref.setDecimals(2)
         sp_aut = QDoubleSpinBox(); sp_aut.setMaximum(10_000_000); sp_aut.setDecimals(2)
-        add("VALOR_MAJORADO", sp_ref, 2, 0, 1, 120)
-        add("VALOR_REQUERIDO",     sp_aut, 2, 2, 1, 120)
-
+        add("VALOR_TARIFA", sp_ref, 2, 0, 1, 120)
+        add("VALOR_AUTORIZADO",     sp_aut, 2, 2, 1, 120)
         add("AUTORIZACAO", QLineEdit(),    2, 4, 1, 200)
 
         # Linha 3 (Qtde de contratos + Prazo + Vencimento auto + Observação)

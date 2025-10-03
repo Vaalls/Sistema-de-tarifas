@@ -3,8 +3,8 @@ from typing import Dict
 
 from PySide6.QtCore import Qt, QDate, Slot, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QComboBox, QDateEdit,
-    QHBoxLayout, QPushButton, QMessageBox, QDoubleSpinBox, QCheckBox, QAbstractSpinBox
+    QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QDateEdit, QDoubleSpinBox,
+    QSpinBox, QComboBox, QPushButton, QMessageBox, QHBoxLayout, QAbstractSpinBox
 )
 
 from app.ui.modules.cgm.views.mass_import_dialog import MassImportDialog
@@ -14,7 +14,9 @@ GOLD_HOVER="QPushButton:hover{background:#C49A2E;}"
 def _btn(t, accent=True):
     b=QPushButton(t)
     if accent: b.setProperty("accent","true")
-    b.setMinimumHeight(36); b.setCursor(Qt.PointingHandCursor); b.setStyleSheet(GOLD_HOVER)
+    b.setMinimumHeight(36)
+    b.setCursor(Qt.PointingHandCursor)
+    b.setStyleSheet(GOLD_HOVER)
     return b
 
 def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
@@ -25,10 +27,6 @@ def _date_ddmmyyyy(default_today: bool = True) -> QDateEdit:
     if default_today: d.setDate(QDate.currentDate())
     if d.lineEdit(): d.lineEdit().setInputMask("99/99/9999")
     return d
-
-FIELDS_LAR = ["Data_Neg","Segmento","Cliente","AG","CNPJ","Vlr_Tar_Ref","Vlr_Auto","Vlr_Lar",
-              "Tipo_Cliente","Autorização","Prazo","Vencimento","Observação","Atuado_SGN"]
-
 
 class LarCadastroView(QWidget):
     saved = Signal(dict)
@@ -42,90 +40,182 @@ class LarCadastroView(QWidget):
         self._build()
 
     def _build(self):
-        root=QVBoxLayout(self); root.setSpacing(12); root.setContentsMargins(12,12,12,12)
+        root=QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(12,12,12,12)
+        
         g=QGridLayout(); g.setHorizontalSpacing(12); g.setVerticalSpacing(10)
 
-        def add(r,c,lab,w,minw=160,span=1):
-            g.addWidget(QLabel(lab), r, c)
-            w.setMinimumWidth(minw); self.inputs[lab]=w
-            g.addWidget(w, r, c+1, 1, span)
+        def add(label: str, w: QWidget, row: int, col: int, span: int = 1, minw: int = 120):
+            lab = QLabel(label); lab.setStyleSheet("background:transparent;")
+            w.setMinimumWidth(minw)
+            self.inputs[label] = w
+            g.addWidget(lab, row, col)
+            g.addWidget(w,   row, col+1, 1, span)
 
-        add(0,0,"Data_Neg", _date_ddmmyyyy()); cb_seg=QComboBox(); cb_seg.addItems(["PJ","PME","Corporate"])
-        add(0,2,"Segmento", cb_seg, 140)
-        add(1,0,"Cliente", QLineEdit(), 240); add(1,2,"AG", QLineEdit(), 100)
-        add(2,0,"CNPJ", QLineEdit(), 160);  v_ref=QDoubleSpinBox(); v_ref.setMaximum(1e9); v_ref.setDecimals(2)
-        add(2,2,"Vlr_Tar_Ref", v_ref, 120)
-        v_aut=QDoubleSpinBox(); v_aut.setMaximum(1e9); v_aut.setDecimals(2)
-        add(3,0,"Vlr_Auto", v_aut, 120); v_lar=QDoubleSpinBox(); v_lar.setMaximum(1e9); v_lar.setDecimals(2)
-        add(3,2,"Vlr_Lar", v_lar, 120)
-        cb_tipo=QComboBox(); cb_tipo.addItems(["PJ","PF","MEI"])
-        add(4,0,"Tipo_Cliente", cb_tipo, 140); add(4,2,"Autorização", QLineEdit(), 200)
-        add(5,0,"Prazo", QLineEdit(), 120); add(5,2,"Vencimento", _date_ddmmyyyy(), 140)
-        add(6,0,"Observação", QLineEdit(), 260); chk = QCheckBox("Atuado_SGN"); self.inputs["Atuado_SGN"]=chk; g.addWidget(chk, 6, 2, 1, 2)
+        # Linha 0
+        self.ed_data_neg = _date_ddmmyyyy()
+        add("DATA_NEG", self.ed_data_neg, 0, 0)
+        cb_segmento = QComboBox(); cb_segmento.addItems(["","EMPRESAS","MIDDLE","CORPORATE", "LARGE", "CAPTAÇÃO", "OUTROS"])
+        add("SEGMENTO", cb_segmento, 0, 2)
+        add("CNPJ",     QLineEdit(),       0, 4, 1, 160)
+
+        # Linha 1 
+        add("AGÊNCIA",       QLineEdit(),       1, 0, 1, 20)
+        cb_tar = QComboBox(); cb_tar.addItems(["", "660"])
+        add("TARIFA", cb_tar, 1, 2, 1, 100)
+
+        # Linha 2
+        sp_lar = QDoubleSpinBox(); sp_lar.setMaximum(10_000_000_000); sp_lar.setDecimals(2)
+        sp_ref = QDoubleSpinBox(); sp_ref.setMaximum(10_000_000_000); sp_ref.setDecimals(2)
+        sp_aut = QDoubleSpinBox(); sp_aut.setMaximum(10_000_000_000); sp_aut.setDecimals(2)
+        add("VALOR_TARIFA", sp_ref, 2, 0, 1, 120)
+        add("VALOR_AUTORIZADO", sp_aut, 2, 2, 1, 120)
+        add("VALOR_DA_LAR", sp_lar, 2, 4, 1, 120)
+
+        # Linha 3 
+        cb_tp_cli = QComboBox(); cb_tp_cli.addItems(["", "NOVO/POT", "NORMAL", "RESTRITIVO"])
+        self.sp_prazo = QSpinBox(); self.sp_prazo.setRange(0, 3650)  # dias
+        self.ed_venc  = _date_ddmmyyyy(); self.ed_venc.setReadOnly(True)
+        add("TIPO_CLIENTE", cb_tp_cli, 3, 0, 1, 120)
+        add("PRAZO",      self.sp_prazo, 3, 2, 1, 120)
+        add("VENCIMENTO",        self.ed_venc,  3, 4, 1, 120)
+
+        # Linha 4
+        add("AUTORIZAÇÃO", QLineEdit(), 4, 0, 1, 120)
+        add("CLIENTE", QLineEdit(),       4, 2, 3, 180)
+
+        # Linha 5
+        cb_atuado = QComboBox(); cb_atuado.addItems(["", "S", "N"])
+        add("ATUADO_SCT", cb_atuado, 5, 0, 1, 120)
+        add("OBSERVAÇÃO", QLineEdit(),     5, 2, 3, 180)
+
+        # Linha 6
+        cb_status = QComboBox(); cb_status.addItems(["", "Sim", "Não"])
+        cb_user = QComboBox(); cb_user.addItems(["", "TIANER", "KARIANJ", "FELSPIN", "NAYSANT"])
+        cb_motivo = QComboBox(); cb_motivo.addItems([
+            "","ERRO OPERACIONAL","ERRO DE SISTEMA","COMERCIAL","ARQUIVADO","PENDENTE DE DOM","RECEPCIONADO",
+            "RECUSADO","CLIENTE APLICADOR","ENCERRAMENTO DE CONTA","PACOTE ATIVO","TARIFA DEVIDA","CREDITADO",
+            "DEVOLVIDO","ENCAMINHADO","FRANQUIA"
+        ])
+        add("STATUS_CLIENTE", cb_status, 6, 0, 1, 100) 
+        add("ATUAÇÃO", cb_user, 6, 2, 1)
+        add("MOTIVO", cb_motivo, 6, 4, 1)
+
 
         root.addLayout(g)
 
-        actions=QHBoxLayout(); actions.addStretch()
-        bclr=_btn("Limpar",accent=False); bcan=_btn("Cancelar",accent=False); bsave=_btn("Cadastrar"); bmass=_btn("Carregar em massa")
-        actions.addWidget(bclr); actions.addWidget(bcan); actions.addWidget(bsave)
-        actions.addSpacing(12); actions.addWidget(bmass)
+       # Ações
+        actions = QHBoxLayout(); actions.addStretch()
+        btn_clear   = _btn("Limpar", accent=False)
+        btn_cancel  = _btn("Voltar", accent=False)
+        btn_save    = _btn("Cadastrar", accent=True)
+        btn_mass    = _btn("Carregar em massa", accent=True)
+        actions.addWidget(btn_clear); actions.addWidget(btn_cancel)
+        actions.addWidget(btn_save);  actions.addSpacing(12); actions.addWidget(btn_mass)
         root.addLayout(actions)
 
-        bclr.clicked.connect(self._clear); bcan.clicked.connect(self._on_cancel); bsave.clicked.connect(self._on_save)
-        bmass.clicked.connect(lambda: MassImportDialog("LAR", FIELDS_LAR, self).exec())
+        # Conexões
+        btn_clear.clicked.connect(self._clear)
+        btn_cancel.clicked.connect(self._on_cancel)
+        btn_save.clicked.connect(self._on_save)
+        btn_mass.clicked.connect(self._open_mass_import)
+
+        self.ed_data_neg.dateChanged.connect(self._recalc_vencimento)
+        self.sp_prazo.valueChanged.connect(self._recalc_vencimento)
+        self._recalc_vencimento()  # inicial
+
+    # -------- lógica vencimento --------
+    @Slot()
+    def _recalc_vencimento(self):
+        base = self.ed_data_neg.date()
+        dias = int(self.sp_prazo.value())
+        self.ed_venc.setDate(base.addDays(dias))
 
     # Helpers/fluxo
     def _collect(self)->Dict[str,str]:
-        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QCheckBox
-        d:Dict[str,str]={}
-        for k,w in self.inputs.items():
-            if isinstance(w, QLineEdit): d[k]=w.text().strip()
-            elif isinstance(w, QComboBox): d[k]=w.currentText().strip()
-            elif isinstance(w, QDateEdit): d[k]=w.date().toString("dd/MM/yyyy")
-            elif isinstance(w, QDoubleSpinBox): d[k]=f"{w.value():.2f}".replace(".", ",")
-            elif isinstance(w, QCheckBox): d[k]="S" if w.isChecked() else "N"
+        from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox
+        d: Dict[str, str] = {}
+        for label, w in self.inputs.items():
+            if isinstance(w, QLineEdit):
+                d[label] = w.text().strip()
+            elif isinstance(w, QComboBox):
+                d[label] = w.currentText().strip()
+            elif isinstance(w, QDateEdit):
+                d[label] = w.date().toString("dd/MM/yyyy")
+            elif isinstance(w, QDoubleSpinBox):
+                d[label] = f"{w.value():.2f}".replace(".", ",")
+            elif isinstance(w, QSpinBox):
+                d[label] = str(w.value())
         return d
+
 
     def _is_empty(self)->bool:
         from PySide6.QtWidgets import QLineEdit, QComboBox, QDoubleSpinBox, QCheckBox
         for w in self.inputs.values():
-            if isinstance(w, QLineEdit) and w.text().strip(): return False
-            if isinstance(w, QComboBox) and w.currentIndex()>0: return False
-            if isinstance(w, QDoubleSpinBox) and w.value()>0: return False
-            if isinstance(w, QCheckBox) and w.isChecked(): return False
+            if isinstance(w, QLineEdit) and w.text().strip():
+                return False
+            if isinstance(w, (QDoubleSpinBox, QSpinBox)) and w.value() > 0:
+                return False
+            if isinstance(w, QComboBox) and w.currentIndex() > 0:
+                return False
         return True
 
     def _clear(self):
         from PySide6.QtWidgets import QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QCheckBox
         for w in self.inputs.values():
-            if isinstance(w, QLineEdit): w.clear()
-            elif isinstance(w, QComboBox): w.setCurrentIndex(0)
-            elif isinstance(w, QDateEdit): w.setDate(QDate.currentDate())
-            elif isinstance(w, QDoubleSpinBox): w.setValue(0)
-            elif isinstance(w, QCheckBox): w.setChecked(False)
+            if isinstance(w, QLineEdit):
+                w.clear()
+            elif isinstance(w, (QDoubleSpinBox, QSpinBox)):
+                w.setValue(0)
+            elif isinstance(w, QComboBox):
+                w.setCurrentIndex(0)
+            elif isinstance(w, QDateEdit):
+                w.setDate(QDate.currentDate())
 
     @Slot()
     def _on_cancel(self):
         if self._is_empty():
-            self._clear(); self.cancelled.emit(); return
-        if QMessageBox.question(self,"Cancelar","Cancelar cadastro? Dados serão descartados.")==QMessageBox.Yes:
-            self._clear(); self.cancelled.emit()
+            self.cancelled.emit()
+            return
+        m = QMessageBox(self)
+        m.setWindowTitle("Cancelar")
+        m.setText("Deseja cancelar? Os dados preenchidos serão descartados.")
+        m.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        m.setDefaultButton(QMessageBox.No)
+        if m.exec() == QMessageBox.Yes:
+            self.cancelled.emit()
 
     @Slot()
     def _on_save(self):
-        d=self._collect()
-        falta=[]
-        for f in ("Cliente","CNPJ","AG"):
-            if not d.get(f): falta.append(f)
-        if falta:
-            QMessageBox.warning(self,"Campos obrigatórios","Preencha: "+", ".join(falta)); return
+        d = self._collect()
 
-        m=QMessageBox(self); m.setWindowTitle("Sucesso"); m.setText("Cadastro realizado com sucesso.")
-        vis=m.addButton("Visualizar", QMessageBox.AcceptRole); close=m.addButton("Fechar", QMessageBox.RejectRole); m.exec()
-        self._clear(); self.saved.emit(d)
-        if m.clickedButton() is vis: self.saved_view.emit(d)
-        else:                         self.saved_close.emit(d)
+        # valida mínimos para alçada
+        obrig = ["DATA_NEG","CNPJ","AGÊNCIA","TARIFA","PRAZO"]
+        faltam = [f for f in obrig if not d.get(f)]
+        if faltam:
+            QMessageBox.warning(self, "Campos obrigatórios", "Preencha: " + ", ".join(faltam))
+            return
 
-    def hideEvent(self, ev):
-        try: self._clear()
-        finally: super().hideEvent(ev)
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Cadastro realizado")
+        msg.setText("Negociação com alçada cadastrada com sucesso.")
+        bt_vis   = msg.addButton("Visualizar", QMessageBox.AcceptRole)
+        bt_close = msg.addButton("Fechar",     QMessageBox.RejectRole)
+        msg.exec()
+
+        self._clear()
+        self.saved.emit(d)
+
+        if msg.clickedButton() is bt_vis:
+            self.saved_view.emit(d)
+        else:
+            self.saved_close.emit(d)
+
+    def _open_mass_import(self):
+        cols = ["Data_Neg","Segmento","CNPJ","AG","CC","Tarifa",
+                "Vlr_Tar_Ref","Vlr_Aut","Autorização","Qtde_De_Contrato",
+                "Prazo","Vencimento","Observação"]
+        dlg = MassImportDialog("Negociação com Alçada", cols, self)
+        if dlg.exec():
+            pass

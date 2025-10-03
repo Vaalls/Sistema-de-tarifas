@@ -69,7 +69,32 @@ class EstornoRepository(BaseRepository):
         ORDER BY DATA_ENT DESC
         """
         return self._fetchall(sql, ag=ag, cc=cc, cli=cliente, tar=tarifa)
-      
+    
+    def search_cadastro(self, ag: str = "", cc: str = "", nome: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
+      sql = f"""
+      SELECT
+        Id AS id,
+        DATA_ENT     AS Data_Ent,
+        AREA         AS AREA,
+        AG           AS AG,
+        CC           AS CC,
+        VLR_EST      AS Vlr_EST,
+        Tar          AS TAR,
+        VLR_CRED     AS Vlr_CRED,
+        STATUS       AS Status,
+        RESP         AS RESP,
+        SEGMENTO     AS SEGMENTO,
+        NOME_CLIENTE AS NOME
+      FROM {self.TABLE}
+      WHERE 1=1
+        AND (:ag = ''  OR AG = :ag)
+        AND (:cc = ''  OR CC = :cc)
+        AND (:nm = ''  OR NOME_CLIENTE LIKE '%' + :nm + '%')
+        AND (:tar = '' OR Tar = :tar)
+      ORDER BY DATA_ENT DESC
+      """
+      return self._fetchall(sql, ag=ag, cc=cc, nm=nome, tar=tarifa)
+    
       # ---------- CRUD de linha única ----------
     def get_by_id(self, id_: int):
       sql = f"""
@@ -116,28 +141,32 @@ class EstornoRepository(BaseRepository):
                 pass
         return ok
     
-    def search_cadastro(self, ag: str = "", cc: str = "", nome: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
-      sql = f"""
-      SELECT
-        Id AS id,
-        DATA_ENT     AS Data_Ent,
-        AREA         AS AREA,
-        AG           AS AG,
-        CC           AS CC,
-        VLR_EST      AS Vlr_EST,
-        Tar          AS TAR,
-        VLR_CRED     AS Vlr_CRED,
-        STATUS       AS Status,
-        RESP         AS RESP,
-        SEGMENTO     AS SEGMENTO,
-        NOME_CLIENTE AS NOME
-      FROM {self.TABLE}
-      WHERE 1=1
-        AND (:ag = ''  OR AG = :ag)
-        AND (:cc = ''  OR CC = :cc)
-        AND (:nm = ''  OR NOME_CLIENTE LIKE '%' + :nm + '%')
-        AND (:tar = '' OR Tar = :tar)
-      ORDER BY DATA_ENT DESC
-      """
-      return self._fetchall(sql, ag=ag, cc=cc, nm=nome, tar=tarifa)
+    # ---------- Busca para a tela de consulta ----------
+    def search_consulta(self, agencia: str = "", conta: str = "", cliente: str = "", tarifa: str ="") -> List[Dict[str, Any]]:
+        sql = f"""
+        SELECT
+          Id              AS id,
+          DATA_ENT       AS DATA_ENT,
+          NOME_CLIENTE   AS CLIENTE,
+          AG             AS AG,
+          CC             AS CC,
+          VLR_EST        AS VLR_EST,
+          TAR            AS TAR,
+          DT_EST        AS DT_EST,
+          VLR_CRED       AS VLR_CRED,
+          STATUS         AS STATUS,
+          RESP           AS RESP,
+          SEGMENTO       AS SEGMENTO,
+          AREA           AS AREA
+
+        FROM {self.TABLE}
+        WHERE 1=1
+          AND (:ag = '' OR AG = :ag)
+          AND (:cc = '' OR CC = :cc)
+          AND (:cli = '' OR NOME_CLIENTE LIKE '%' + :cli + '%')
+        ORDER BY DATA_ENT DESC
+        """
+        return self._fetchall(sql, ag=agencia or "", cc=conta or "", cli=cliente or "", tar=tarifa or "")
+    
+    
 

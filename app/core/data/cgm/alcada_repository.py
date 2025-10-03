@@ -48,7 +48,7 @@ class AlcadaRepository(BaseRepository):
             """
             return self._fetchall(sql, limit=limit)
 
-        def search(self, ag: str = "", cc: str = "", cliente: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
+        def search(self, segmento: str = "", cliente: str = "", ag: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
             sql = f"""
             SELECT
             COALESCE(CLIENTE, '') AS cliente,
@@ -59,13 +59,13 @@ class AlcadaRepository(BaseRepository):
             COALESCE(STATUS,  '') AS situacao
             FROM {self.TABLE}
             WHERE 1=1
-            AND (:ag  = '' OR AGENCIA = :ag)
+            AND (:seg='' OR SEGMENTO = :seg)
             AND (:cc  = '' OR CONTA   = :cc)
             AND (:cli = '' OR CLIENTE LIKE '%' + :cli + '%')
             AND (:tar = '' OR TARIFA  = :tar)
             ORDER BY DATA_NEG DESC
             """
-            return self._fetchall(sql, ag=ag, cc=cc, cli=cliente, tar=tarifa)
+            return self._fetchall(sql, seg=segmento, cli=cliente,ag=ag, tar=tarifa)
 
         def search_cadastro(self, ag: str = "", cc: str = "", nome: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
             sql = f"""
@@ -144,16 +144,15 @@ class AlcadaRepository(BaseRepository):
             return ok
 
         # ---------- Busca para a tela de consulta ----------
-        def search_consulta(self, segmento: str = "", cliente: str = "", cnpj: str = "", ag: str = ""):
+        def search_consulta(self, segmento: str = "", cliente: str = "", cnpj: str = "", ag: str = "", tarifa: str = ""):
             sql = f"""
             SELECT
-            Id                           AS id,
+            Id              AS id,
             DATA_NEG        AS DATA_NEG,
             SEGMENTO        AS SEGMENTO,
             CLIENTE         AS CLIENTE,
             CNPJ            AS CNPJ,
             AGENCIA         AS AGENCIA,
-            CONTA           AS CONTA,
             TARIFA          AS TARIFA,
             VALOR_MAJORADO  AS VALOR_MAJORADO,
             VALOR_REQUERIDO AS VALOR_REQUERIDO,
@@ -171,7 +170,7 @@ class AlcadaRepository(BaseRepository):
             ORDER BY DATA_NEG DESC
             """
             cnpj_digits = "".join(ch for ch in (cnpj or "") if ch.isdigit())
-            return self._fetchall(sql, seg=segmento or "", cli=cliente or "", cnp=cnpj_digits, ag=ag or "")
+            return self._fetchall(sql, seg=segmento or "", cli=cliente or "", cnp=cnpj_digits, ag=ag or "", tar=tarifa )
 
         def _to_float(self, v) -> float | None:
             if v is None: return None
