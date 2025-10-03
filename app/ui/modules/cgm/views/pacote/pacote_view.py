@@ -38,10 +38,10 @@ class PacoteView(QWidget):
         
         hh=table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(1, QHeaderView.Interactive)
+        hh.setSectionResizeMode(1, QHeaderView.Stretch)
         hh.setSectionResizeMode(2, QHeaderView.Interactive)
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(4, QHeaderView.Fixed)
         hh.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         hh.setSectionResizeMode(6, QHeaderView.Fixed)
         table.setColumnWidth(6,130)

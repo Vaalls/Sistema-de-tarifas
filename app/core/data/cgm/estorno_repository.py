@@ -7,33 +7,35 @@ class EstornoRepository(BaseRepository):
 
     # chaves do formulário → colunas reais da tabela
     MAP = {
-        "Data_Ent":   "DATA_ENT",
-        "DT_Est":     "DT_EST",
-        "Status":     "STATUS",
-        "Area":       "AREA",
-        "Segmento":   "SEGMENTO",
-        "Resp":       "RESP",
-        "Agencia":    "AG",                # UI "Agencia" → DB "AG"
-        "Conta":      "CC",                # UI "Conta"   → DB "CC"
-        "Nome_Ag":    "NOME_AG",
-        "Nome_Cli":   "NOME_CLIENTE",      # alinhei com o que apareceu no seu erro
+        "DATA_ENT":   "DATA_ENT",
+        "ÁREA":       "AREA",
+        "AGÊNCIA":    "AG",
+        "CONTA":      "CC",
+        "CLIENTE":   "NOME_CLIENTE",      # alinhei com o que apareceu no seu erro
         "CNPJ":       "CNPJ",
-        "Tar":        "Tar",
-        "Vlr_Est":    "VLR_EST",
-        "Class":      "CLASS",
-        "Parecer_OP": "PARECER_OP",
-        "de_acordo":  "DE_ACORDO",
-        "Vlr_Cred":   "VLR_CRED",
-        "Solicitante":"SOLICITANTE"       # <--- Linha adicionada
+        "VLR_ESTORNO":    "VLR_EST",
+        "TARIFA":        "Tar",
+        "DT_ESTORNO":     "DT_EST",
+        "VLR_CREDITO":   "VLR_CRED",
+        "STATUS":     "STATUS",
+        "RESPONSAVEL":       "RESP",
+        "SEGMENTO":   "SEGMENTO",
+        "NM_AGÊNCIA":    "NOME_AG",
+        "CLASS":      "CLASS",
+        "PARECER": "PARECER_OP",
+        "GRUPO": "GRUPO"
     }
 
     def insert(self, d: Dict[str, Any]) -> bool:
         d = dict(d)  # cópia
         # converte datas para objetos date (evita erro nvarchar→datetime)
-        if "Data_Ent" in d: d["Data_Ent"] = self.to_date(d["Data_Ent"])
-        if "DT_Est"   in d: d["DT_Est"]   = self.to_date(d["DT_Est"])
+        if "DATA_ENT" in d: d["DATA_ENT"] = self.to_date(d["DATA_ENT"])
+        if "DT_ESTORNO"   in d: d["DT_ESTORNO"]   = self.to_date(d["DT_ESTORNO"])
+
         # dinheiro
-        if "Vlr_Est" in d: d["Vlr_Est"] = self.to_money(d["Vlr_Est"])
+        if "VLR_ESTORNO" in d: d["VLR_ESTORNO"] = self.to_money(d["VLR_ESTORNO"])
+        if "VLR_CREDITO" in d: d["VLR_CREDITO"] = self.to_money(d["VLR_CREDITO"])
+
         # faz o insert
         return self._insert_generic(self.TABLE, self.MAP, d)
 
@@ -51,15 +53,14 @@ class EstornoRepository(BaseRepository):
         """
         return self._fetchall(sql, limit=limit)
 
-    def search(self, ag: str = "", cc: str = "", cliente: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
+    def search(self, ag: str = "", cc: str = "", cli: str = "", tar: str = "") -> List[Dict[str, Any]]:
         sql = f"""
         SELECT
           COALESCE(NOME_CLIENTE,'') AS cliente,
           COALESCE(CNPJ,'')      AS cnpj,
           COALESCE(AG,'')        AS ag,
           COALESCE(CC,'')        AS conta,
-          COALESCE(Tar,'')       AS tarifa,
-          COALESCE(STATUS,'')    AS situacao
+          COALESCE(Tar,'')       AS tarifa
         FROM {self.TABLE}
         WHERE 1=1
           AND (:ag = '' OR AG = :ag)
@@ -68,23 +69,28 @@ class EstornoRepository(BaseRepository):
           AND (:tar = '' OR Tar = :tar)
         ORDER BY DATA_ENT DESC
         """
-        return self._fetchall(sql, ag=ag, cc=cc, cli=cliente, tar=tarifa)
+        return self._fetchall(sql, ag=ag, cc=cc, cli=cli, tar=tar)
     
-    def search_cadastro(self, ag: str = "", cc: str = "", nome: str = "", tarifa: str = "") -> List[Dict[str, Any]]:
+    def search_cadastro(self, ag: str = "", cc: str = "", cli: str = "", tar: str = "") -> List[Dict[str, Any]]:
       sql = f"""
       SELECT
         Id AS id,
-        DATA_ENT     AS Data_Ent,
-        AREA         AS AREA,
-        AG           AS AG,
-        CC           AS CC,
-        VLR_EST      AS Vlr_EST,
-        Tar          AS TAR,
-        VLR_CRED     AS Vlr_CRED,
-        STATUS       AS Status,
-        RESP         AS RESP,
-        SEGMENTO     AS SEGMENTO,
-        NOME_CLIENTE AS NOME
+          DATA_ENT       AS DATA_ENT,
+          AREA           AS AREA,
+          AG             AS AG,
+          CC             AS CC,  
+          NOME_CLIENTE   AS CLIENTE,
+          CNPJ AS CNPJ,
+          VLR_EST        AS VLR_EST,
+          TAR            AS TAR,
+          DT_EST        AS DT_EST,
+          VLR_CRED       AS VLR_CRED,
+          STATUS         AS STATUS,
+          RESP           AS RESP,
+          SEGMENTO       AS SEGMENTO,
+          NOME_AG AS NM_AGÊNCIA,
+          CLASS AS CLASS,
+          PARECER_OP AS PARECER
       FROM {self.TABLE}
       WHERE 1=1
         AND (:ag = ''  OR AG = :ag)
@@ -93,7 +99,7 @@ class EstornoRepository(BaseRepository):
         AND (:tar = '' OR Tar = :tar)
       ORDER BY DATA_ENT DESC
       """
-      return self._fetchall(sql, ag=ag, cc=cc, nm=nome, tar=tarifa)
+      return self._fetchall(sql, ag=ag, cc=cc, nm=cli, tar=tar)
     
       # ---------- CRUD de linha única ----------
     def get_by_id(self, id_: int):
@@ -105,25 +111,71 @@ class EstornoRepository(BaseRepository):
       rows = self._fetchall(sql, id=id_)
       return rows[0] if rows else None
 
-    def update_by_id(self, id_: int, changes: Dict[str, Any]) -> bool:
-        if not changes:
-            return True
-        # normalizações
-        d = dict(changes)
-        for k in ("Data_Ent","DT_Est"):
-            if k in d: d[k] = self.to_date(d[k])
-        if "Vlr_Est" in d:
-            d["Vlr_Est"] = self.to_money(d["Vlr_Est"])
+    def update_by_id(self, id_: int, data: Dict[str, Any], only: List[str]) -> bool:
+        """
+        Atualiza o registro Id. Se `only` for informado, atualiza apenas essas colunas.
+        Em `only` você pode passar chaves do formulário (MAP) ou nomes de colunas do BD.
+        - DATA_NEG: normaliza como data (datetime)
+        - VENCIMENTO: mantém como texto (NVARCHAR no schema)
+        - Valores vazios/None são ignorados (não sobrescrevem no BD)
+        """
+        if not data:
+            return False
 
-        sets = []
-        params = {"id": id_}
-        for k, v in d.items():
-            col = self.MAP.get(k, k)  # aceita tanto chave do form qto coluna direta
-            sets.append(f"{col} = :{col}")
-            params[col] = v
+        # Se 'only' veio, convertemos para nomes de colunas do BD
+        allowed_cols: set[str] | None = None
+        if only:
+            allowed_cols = set(self.MAP.get(k, k) for k in only)
 
+        def _allowed(col: str) -> bool:
+            return (allowed_cols is None) or (col in allowed_cols)
+
+        db_vals: Dict[str, Any] = {}
+
+        # 1) chaves do formulário (via MAP)
+        for form_key, col in self.MAP.items():
+            if form_key not in data or not _allowed(col):
+                continue
+            v = data.get(form_key)
+
+            # Ignora None ou string vazia (não atualiza a coluna)
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            # Normalizações por coluna
+            if col == "DATA_ENT":
+                v = self.to_date(v)            # DATA_NEG é datetime
+            elif col in ("VLR_EST", "VLR_CRED"):
+                v = self.to_money(v)
+            # VENCIMENTO: não converter (é NVARCHAR)
+
+            db_vals[col] = v
+
+        # 2) aceita também nomes de coluna do BD diretamente
+        for col, v in data.items():
+            if col in self.MAP:  # já tratado acima
+                continue
+            if not _allowed(col):
+                continue
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            # Normalizações quando já vier nome da coluna do BD
+            if col == "DATA_ENT":
+                v = self.to_date(v)
+            elif col in ("VLR_EST", "VLR_CRED"):
+                v = self.to_money(v)
+            # VENCIMENTO: manter texto
+
+            db_vals[col] = v
+
+        if not db_vals:
+            return False
+
+        sets = [f"{c} = :{c}" for c in db_vals]
+        db_vals["id"] = id_
         sql = f"UPDATE {self.TABLE} SET {', '.join(sets)} WHERE Id = :id"
-        self._exec(sql, **params)
+        self._exec(sql, **db_vals)
         return True
 
     def delete_by_id(self, id_: int) -> bool:
@@ -142,31 +194,35 @@ class EstornoRepository(BaseRepository):
         return ok
     
     # ---------- Busca para a tela de consulta ----------
-    def search_consulta(self, agencia: str = "", conta: str = "", cliente: str = "", tarifa: str ="") -> List[Dict[str, Any]]:
+    def search_consulta(self, ag: str = "", cc: str = "", cli: str = "", tar: str = "") -> List[Dict[str, Any]]:
         sql = f"""
         SELECT
-          Id              AS id,
-          DATA_ENT       AS DATA_ENT,
-          NOME_CLIENTE   AS CLIENTE,
-          AG             AS AG,
-          CC             AS CC,
-          VLR_EST        AS VLR_EST,
-          TAR            AS TAR,
-          DT_EST        AS DT_EST,
-          VLR_CRED       AS VLR_CRED,
-          STATUS         AS STATUS,
-          RESP           AS RESP,
-          SEGMENTO       AS SEGMENTO,
-          AREA           AS AREA
-
+        Id            AS id,
+        DATA_ENT      AS DATA_ENT,
+        AREA          AS AREA,
+        AG            AS AG,
+        CC            AS CC,
+        NOME_CLIENTE  AS CLIENTE,
+        CNPJ          AS CNPJ,
+        VLR_EST       AS VLR_EST,
+        TAR           AS TAR,
+        DT_EST        AS DT_EST,
+        VLR_CRED      AS VLR_CRED,
+        STATUS        AS STATUS,
+        RESP          AS RESP,
+        SEGMENTO      AS SEGMENTO,
+        NOME_AG       AS NM_AGÊNCIA,
+        CLASS         AS CLASS,
+        PARECER_OP    AS PARECER
         FROM {self.TABLE}
         WHERE 1=1
-          AND (:ag = '' OR AG = :ag)
-          AND (:cc = '' OR CC = :cc)
-          AND (:cli = '' OR NOME_CLIENTE LIKE '%' + :cli + '%')
+        AND (:ag  = '' OR AG  = :ag)
+        AND (:cc  = '' OR CC  = :cc)
+        AND (:cli = '' OR NOME_CLIENTE LIKE '%' + :cli + '%')
+        AND (:tar = '' OR TAR = :tar)      -- <<< FALTAVA ESTE FILTRO
         ORDER BY DATA_ENT DESC
         """
-        return self._fetchall(sql, ag=agencia or "", cc=conta or "", cli=cliente or "", tar=tarifa or "")
-    
+        return self._fetchall(sql, ag=ag or "", cc=cc or "", cli=cli or "", tar=tar or "")
+
     
 

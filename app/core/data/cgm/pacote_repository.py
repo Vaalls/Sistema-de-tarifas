@@ -98,36 +98,77 @@ class PacoteRepository(BaseRepository):
       rows = self._fetchall(sql, id=id_)
       return rows[0] if rows else None
 
-    def update_by_id(self, id_: int, data: dict) -> bool:
+    def update_by_id(self, id_: int, data: Dict[str, Any], only: List[str]) -> bool:
+        """
+        Atualiza o registro Id. Se `only` for informado, atualiza apenas essas colunas.
+        Em `only` você pode passar chaves do formulário (MAP) ou nomes de colunas do BD.
+        - DATA_NEG: normaliza como data (datetime)
+        - VENCIMENTO: mantém como texto (NVARCHAR no schema)
+        - Valores vazios/None são ignorados (não sobrescrevem no BD)
+        """
         if not data:
             return False
-        sets, params, i = [], {"id": id_}, 0
-        for key_view, value in data.items():
-            k = str(key_view).upper() if key_view is not None else ""
-            dbcol = self.MAP.get(k)
-            if not dbcol:
+
+        # Se 'only' veio, convertemos para nomes de colunas do BD
+        allowed_cols: set[str] | None = None
+        if only:
+            allowed_cols = set(self.MAP.get(k, k) for k in only)
+
+        def _allowed(col: str) -> bool:
+            return (allowed_cols is None) or (col in allowed_cols)
+
+        db_vals: Dict[str, Any] = {}
+
+        # 1) chaves do formulário (via MAP)
+        for form_key, col in self.MAP.items():
+            if form_key not in data or not _allowed(col):
+                continue
+            v = data.get(form_key)
+
+            # Ignora None ou string vazia (não atualiza a coluna)
+            if v is None or (isinstance(v, str) and not v.strip()):
                 continue
 
-            # coerção igual ao insert
-            up = dbcol.upper()
-            if up == "DATA_NEG":
-                value = self.to_date(value)
-            elif up == "DATA_REV":
-                value = self.to_date(value)
-            elif up == "DT_ATUACAO":
-                value = self.to_date(value)
-            else:
-                value = None if value is None else str(value)
+            # Normalizações por coluna
+            if col == ("DATA_NEG", "DATA_REV"):
+                v = self.to_date(v)            # DATA_NEG é datetime
+            elif col in ("VALOR_TARIFA", "VALOR_AUTORIZADO"):
+                v = self.to_money(v)
+            elif col == "PRAZO":
+                v = self._to_float(v)
+            # VENCIMENTO: não converter (é NVARCHAR)
 
-            p = f"p{i}"; i += 1
-            sets.append(f"{dbcol} = :{p}")
-            params[p] = value
+            db_vals[col] = v
 
-        if not sets:
+        # 2) aceita também nomes de coluna do BD diretamente
+        for col, v in data.items():
+            if col in self.MAP:  # já tratado acima
+                continue
+            if not _allowed(col):
+                continue
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            # Normalizações quando já vier nome da coluna do BD
+            if col == "DATA_NEG":
+                v = self.to_date(v)
+            elif col in ("VALOR_TARIFA", "VALOR_AUTORIZADO"):
+                v = self.to_money(v)
+            elif col == "PRAZO":
+                v = self._to_float(v)
+            elif col == ("ATUADO_SCT", "NEG_ESP"):
+                v = self._to_bit(v)
+            # VENCIMENTO: manter texto
+
+            db_vals[col] = v
+
+        if not db_vals:
             return False
 
-        sql = f"UPDATE {self.TABLE} SET " + ", ".join(sets) + f" WHERE Id = :id"
-        self._exec(sql, **params)
+        sets = [f"{c} = :{c}" for c in db_vals]
+        db_vals["id"] = id_
+        sql = f"UPDATE {self.TABLE} SET {', '.join(sets)} WHERE Id = :id"
+        self._exec(sql, **db_vals)
         return True
 
 

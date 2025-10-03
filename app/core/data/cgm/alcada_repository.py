@@ -105,27 +105,77 @@ class AlcadaRepository(BaseRepository):
             rows = self._fetchall(sql, id=id_)
             return rows[0] if rows else None
 
-        def update_by_id(self, id_: int, changes: Dict[str, Any]) -> bool:
-            if not changes:
-                return True
-            # normalizações
-            d = dict(changes)
-            for k in ("DATA_NEG", "VENCIMENTO"):
-                if k in d: d[k] = self.to_date(d[k])
-                
-            if ("VALOR_MAJORADO", "VALOR_REQUERIDO")  in d:
-                d["VALOR_REQUERIDO"] = self.to_money(d["VALOR_REQUERIDO"])
-                d["VALOR_MAJORADO"] = self.to_money(d["VALOR_MAJORADO"])
+        def update_by_id(self, id_: int, data: Dict[str, Any], only: List[str]) -> bool:
+            """
+            Atualiza o registro Id. Se `only` for informado, atualiza apenas essas colunas.
+            Em `only` você pode passar chaves do formulário (MAP) ou nomes de colunas do BD.
+            - DATA_NEG: normaliza como data (datetime)
+            - VENCIMENTO: mantém como texto (NVARCHAR no schema)
+            - Valores vazios/None são ignorados (não sobrescrevem no BD)
+            """
+            if not data:
+                return False
 
-            sets = []
-            params = {"id": id_}
-            for k, v in d.items():
-                col = self.MAP.get(k, k)  # aceita tanto chave do form qto coluna direta
-                sets.append(f"{col} = :{col}")
-                params[col] = v
+            # Se 'only' veio, convertemos para nomes de colunas do BD
+            allowed_cols: set[str] | None = None
+            if only:
+                allowed_cols = set(self.MAP.get(k, k) for k in only)
 
+            def _allowed(col: str) -> bool:
+                return (allowed_cols is None) or (col in allowed_cols)
+
+            db_vals: Dict[str, Any] = {}
+
+            # 1) chaves do formulário (via MAP)
+            for form_key, col in self.MAP.items():
+                if form_key not in data or not _allowed(col):
+                    continue
+                v = data.get(form_key)
+
+                # Ignora None ou string vazia (não atualiza a coluna)
+                if v is None or (isinstance(v, str) and not v.strip()):
+                    continue
+
+                # Normalizações por coluna
+                if col == "DATA_NEG":
+                    v = self.to_date(v)            # DATA_NEG é datetime
+                elif col in ("VALOR_MAJORADO", "VALOR_REQUERIDO"):
+                    v = self.to_money(v)
+                elif col == "PRAZO":
+                    v = self._to_float(v)
+                # VENCIMENTO: não converter (é NVARCHAR)
+
+                db_vals[col] = v
+
+            # 2) aceita também nomes de coluna do BD diretamente
+            for col, v in data.items():
+                if col in self.MAP:  # já tratado acima
+                    continue
+                if not _allowed(col):
+                    continue
+                if v is None or (isinstance(v, str) and not v.strip()):
+                    continue
+
+                # Normalizações quando já vier nome da coluna do BD
+                if col == "DATA_NEG":
+                    v = self.to_date(v)
+                elif col in ("VALOR_TARIFA", "VALOR_AUTORIZADO"):
+                    v = self.to_money(v)
+                elif col == "PRAZO":
+                    v = self._to_float(v)
+                elif col == ("ATUADO_SCT", "NEG_ESP"):
+                    v = self._to_bit(v)
+                # VENCIMENTO: manter texto
+
+                db_vals[col] = v
+
+            if not db_vals:
+                return False
+
+            sets = [f"{c} = :{c}" for c in db_vals]
+            db_vals["id"] = id_
             sql = f"UPDATE {self.TABLE} SET {', '.join(sets)} WHERE Id = :id"
-            self._exec(sql, **params)
+            self._exec(sql, **db_vals)
             return True
 
         def delete_by_id(self, id_: int) -> bool:
@@ -167,6 +217,7 @@ class AlcadaRepository(BaseRepository):
             AND (:cli = '' OR UPPER(CLIENTE)  LIKE UPPER('%' + :cli + '%'))
             AND (:cnp = '' OR CNPJ = :cnp)
             AND (:ag  = '' OR AGENCIA LIKE :ag + '%')
+            AND (:tar = '' OR TARIFA = :tar)
             ORDER BY DATA_NEG DESC
             """
             cnpj_digits = "".join(ch for ch in (cnpj or "") if ch.isdigit())

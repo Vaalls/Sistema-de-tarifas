@@ -55,33 +55,43 @@ class EstornoCadastroView(QWidget):
             g.addWidget(lab, row, col); g.addWidget(w, row, col+1, 1, span)
 
         # Linha 0
-        add("Data_Ent", _date_ddmmyyyy(), 0, 0)
-        add("DT_Est",   _date_ddmmyyyy(), 0, 2)
-        cb_status = QComboBox(); cb_status.addItems(["Pendente","Aprovado","Negado"])
-        add("Status", cb_status, 0, 4, 1, 140)
+        add("AGÊNCIA",  QLineEdit(), 0, 0, 1, 90)
+        add("CONTA",    QLineEdit(), 0, 2, 1, 90)
+        add("NM_AGÊNCIA",  QLineEdit(), 0, 4, 1, 90)
+        
 
-        # Linha 1
-        add("Area",     QLineEdit(), 1, 0, 3, 240)
-        add("Segmento", QLineEdit(), 1, 4, 1, 140)
-        add("Resp",     QLineEdit(), 1, 6, 1, 180)
+        #LINHA 1
+        add("CNPJ",     QLineEdit(), 1, 0, 1)
+        add("DATA_ENT", _date_ddmmyyyy(), 1 , 2, 1)
+        add("TARIFA",      QLineEdit(), 1, 4, 1)
 
-        # Linha 2
-        add("Agencia",  QLineEdit(), 2, 0, 1, 90)
-        add("Conta",    QLineEdit(), 2, 2, 1, 160)
-        add("Nome_Ag",  QLineEdit(), 2, 4, 3, 240)
+        #LINHA 2
+        add("CLIENTE", QLineEdit(), 2, 0, 1, 160)
+        add("GRUPO", QLineEdit(), 2, 2, 1, 160)
+        cb_seg = QComboBox(); cb_seg.addItems(["", "EMPRESA","MIDDLE","CORPORATE", "LARGE", "CAPTAÇÃO", "OUTROS"])
+        add("SEGMENTO", cb_seg, 2, 4, 1)
 
         # Linha 3
-        add("Nome_Cli", QLineEdit(), 3, 0, 3, 260)
-        add("CNPJ",     QLineEdit(), 3, 4, 1, 160)
+        cb_area = QComboBox(); cb_area.addItems(["", "COMISSÕES E MULTA", "MESA DE TARIFAS"])
+        add("ÁREA",     cb_area, 3, 0, 1)
+        sp_val = QDoubleSpinBox(); sp_val.setMaximum(10_000_000); sp_val.setDecimals(2)
+        add("VLR_ESTORNO",  sp_val, 3, 2, 1, 90)
+        cb_class = QComboBox(); cb_class.addItems(["", "ERRO OPERACIONAL", "ERRO DE SISTEMA", "COMERCIAL",
+                                                    "ENCERRAMENTO DE CONTA", "PACOTE ATIVO", "TARIFA DEVIDA", "CLIENTE APLICADOR", "FRANQUIA"])
+        add("CLASS", cb_class, 3, 4, 1)
 
         # Linha 4
-        add("Tar",      QLineEdit(),        4, 0, 1, 100)
-        sp_val = QDoubleSpinBox(); sp_val.setMaximum(10_000_000); sp_val.setDecimals(2)
-        add("Vlr_Est",  sp_val,             4, 2, 1, 120)
-        add("Class",    QLineEdit(),        4, 4, 1, 100)
-
-        # Linha 5
-        add("Parecer_OP", QLineEdit(), 5, 0, 7, 420)
+        sp_val_cred = QDoubleSpinBox(); sp_val_cred.setMaximum(10_000_000); sp_val_cred.setDecimals(2)
+        add("VLR_CREDITO", sp_val_cred, 4, 0, 1, 90)
+        add("DT_ESTORNO",   _date_ddmmyyyy(), 4, 2, 1)
+        cb_status = QComboBox(); cb_status.addItems(["","ARQUIVADO", "CREDITADO", "DEVOLVIDO", "ENCAMINHADO", "PENDENTE DE DOM",
+                                                     "RECEPCIONADO", "RECUSADO"])
+        add("STATUS", cb_status, 4, 4, 1) 
+        
+        #LINHA 5 
+        cb_resp = QComboBox(); cb_resp.addItems(["", "Cristiane", "Nayara","Karian", "Felipe", "Diego"])
+        add("RESPONSAVEL",     cb_resp, 5, 0, 1)       
+        add("PARECER", QLineEdit(), 5, 2, 3)
 
         root.addLayout(g)
 
@@ -120,7 +130,7 @@ class EstornoCadastroView(QWidget):
         return True
 
     def _validate(self, d: Dict[str, str]) -> List[str]:
-        obrig = ["Agencia","Conta","Nome_Cli","CNPJ","Tar"]
+        obrig = ["AGÊNCIA","CONTA","CLIENTE","CNPJ","TARIFA"]
         return [f for f in obrig if not d.get(f)]
 
     def _clear(self):

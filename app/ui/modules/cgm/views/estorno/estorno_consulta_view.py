@@ -8,16 +8,20 @@ GOLD = "QPushButton:hover{background:#C49A2E;}"
 
 # Colunas exibidas na grid (ordem fixa)
 DISPLAY_COLS = (
-    "DATA_ENT","CLIENTE","AGENCIA","CONTA","VLR_EST","TAR","VLR_CRED","Status","RESP","SEGMENTO","AREA"
+    "DATA_ENT","ÁREA","AGÊNCIA","CONTA","CLIENTE","CNPJ","VLR_ESTORNO","TARIFA",
+    "DT_ESTORNO","VLR_CREDITO","STATUS",
+    "RESPONSAVEL","SEGMENTO",
+    "NM_AGÊNCIA", "CLASS", "PARECER"
 )
 
 DISPLAY_TO_KEY = {
-    "DATA_ENT":"DATA_ENT","AREA":"AREA","AG":"AG","CC":"CC","VLR_EST":"VLR_EST",
-    "TAR":"TAR","VLR_CRED":"VLR_CRED","STATUS":"STATUS","RESP":"RESP",
-    "SEGMENTO":"SEGMENTO","NOME":"NOME_CLIENTE"
+    "DATA_ENT":"DATA_ENT","ÁREA":"AREA","AGÊNCIA":"AG","CONTA":"CC", "CLIENTE":"CLIENTE", "CNPJ":"CNPJ",
+    "VLR_ESTORNO":"VLR_EST", "TARIFA":"TAR", "DT_ESTORNO":"DT_EST", "VLR_CREDITO":"VLR_CRED",
+    "STATUS":"STATUS","RESPONSAVEL":"RESP", "SEGMENTO":"SEGMENTO","NM_AGÊNCIA":"NM_AGÊNCIA",
+    "CLASS":"CLASS", "PARECER":"PARECER" 
 }
 
-DEFAULT_FILTERABLE_COLS = ("DATA_ENT","TAR")
+DEFAULT_FILTERABLE_COLS = ("DATA_ENT","TARIFA")
 
 def _btn(text: str, accent: bool = True, w: int = 160, h: int = 36) -> QPushButton:
     b = QPushButton(text)
@@ -25,7 +29,6 @@ def _btn(text: str, accent: bool = True, w: int = 160, h: int = 36) -> QPushButt
     b.setFixedSize(w, h); b.setCursor(Qt.PointingHandCursor)
     b.setStyleSheet(GOLD)
     return b
-
 
 class EstornoConsultaView(QWidget):
     go_back = Signal()
@@ -90,7 +93,16 @@ class EstornoConsultaView(QWidget):
         def _setw(name, w):
             idx = self._idx_by_header.get(name)
             if idx is not None: self.table.setColumnWidth(idx, w)
-        _setw("CLIENTE", 320); _setw("VLR_CRED", 380)
+        _setw("PARECER", 400)
+        _setw("CLIENTE", 320)
+        _setw("VLR_CREDITO", 160)
+        _setw("VLR_ESTORNO", 160)
+        _setw("ÁREA", 180)
+        _setw("NM_AGÊNCIA", 160)
+        _setw("DATA_ENT", 160)
+        _setw("DT_ESTORNO", 150)
+        _setw("RESPONSAVEL", 150)
+
 
         self.table.setVisible(False)
         root.addWidget(self.table, 1)
@@ -108,9 +120,6 @@ class EstornoConsultaView(QWidget):
         bt_back.clicked.connect(self.go_back.emit)
         self._bt_del.clicked.connect(self._confirm_delete)
         self._bt_upd.clicked.connect(self._open_update_dialog)
-        self.table.selectionModel().selectionChanged.connect(self._on_sel)
-
-        # Habilita/desabilita botões conforme seleção
         self.table.selectionModel().selectionChanged.connect(self._on_sel)
 
     # ---------------------- API ----------------------
@@ -131,7 +140,7 @@ class EstornoConsultaView(QWidget):
         ag = get_ci("Agência","AG")
         cc = get_ci("Conta","CC")
         cli= get_ci("Cliente","NOME")
-        tar= get_ci("Tarifa","TAR")
+        tar= get_ci("Tarifa","TARIFA", "TAR")
 
         self.ed_ag.setText(ag or "")
         self.ed_cc.setText(cc or "")
@@ -176,21 +185,16 @@ class EstornoConsultaView(QWidget):
         if not self.repo: return []
         if not hasattr(self.repo, "search_consulta"):
             raise AttributeError("Implemente EstornoRepository.search_consulta(...)")
-        return self.repo.search_consulta(agencia=ag, conta=cc, cliente=cli, tarifa=tar)
+        return self.repo.search_consulta(ag=ag, cc=cc, cli=cli, tar=tar)
 
     # ---------------------- Core ----------------------
     def _do(self, force=None):
-
-        if force is None:
-            force = getattr(self, "_force_run", False)
-        self._force_run = False
-
         ag = self.ed_ag.text().strip()
         cc = self.ed_cc.text().strip()
-        nome = self.ed_cli.text().strip()
+        cli = self.ed_cli.text().strip()
         tar = self.ed_tar.text().strip()
 
-        if not any([ag, cc, nome, tar]) and not force:
+        if not any([ag, cc, cli, tar]) and not force:
             QMessageBox.information(self, "Consulta", "Informe pelo menos um filtro.")
             return
         if not self.repo:
@@ -198,7 +202,7 @@ class EstornoConsultaView(QWidget):
             return
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
-            rows = self._repo_search(ag, cc, nome, tar)
+            rows = self._repo_search(ag, cc, cli, tar)
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Falha ao consultar: {e}")
             rows = []
@@ -206,13 +210,19 @@ class EstornoConsultaView(QWidget):
             QApplication.restoreOverrideCursor()
         self._fill(rows)
 
-    def _fill(self, rows: List[Dict[str, Any]]):
+    def _fill(self, rows):
         self.table.setRowCount(len(rows))
         for r, it in enumerate(rows):
             rid = it.get("id") or it.get("Id") or it.get("ID")
             for c, label in enumerate(DISPLAY_COLS):
                 key = DISPLAY_TO_KEY.get(label, label)
-                v = it.get(key, it.get(key.lower(), ""))
+                v = (
+                    it.get(key) or
+                    it.get(label) or
+                    it.get(str(key).lower()) or
+                    it.get(str(label).lower()) or
+                    ""
+                )
                 item = QTableWidgetItem("" if v is None else str(v))
                 if c == 0 and rid is not None:
                     item.setData(Qt.UserRole, int(rid))
@@ -220,11 +230,9 @@ class EstornoConsultaView(QWidget):
 
         self.table.setVisible(True)
         self.table.resizeRowsToContents()
-        self._apply_menu_filters()  # reaplica filtros ativos
-
+        self._apply_menu_filters()
         any_rows = len(rows) > 0
-        self._bt_upd.setVisible(any_rows); 
-        self._bt_del.setVisible(any_rows)
+        self._bt_upd.setVisible(any_rows); self._bt_del.setVisible(any_rows)
         if not any_rows: QMessageBox.information(self, "Consulta", "Nenhum registro encontrado.")
         self._on_sel()
 
@@ -359,7 +367,7 @@ class EstornoConsultaView(QWidget):
             btn_clear.clicked.connect(lambda: (clear_date(), menu.close()))
 
         # ----- TARIFA: caixa de busca (contém) -----
-        elif col_name == "TAR":
+        elif col_name == "TARIFA":
             v.addWidget(QLabel("Buscar (contém):"))
             ed = QLineEdit()
             cur = self._active_filters.get(col, {})
@@ -453,15 +461,19 @@ class EstornoConsultaView(QWidget):
     def _open_update_dialog(self):
         ids = self._selected_ids()
         if len(ids) != 1:
-            QMessageBox.information(self, "Atualizar", "Selecione exatamente um registro."); return
+            QMessageBox.information(self, "Atualizar", "Selecione exatamente um registro.")
+            return
         rid = ids[0]
         if not self.repo or not hasattr(self.repo, "get_by_id"):
-            QMessageBox.warning(self, "Atualizar", "Repositório sem get_by_id."); return
+            QMessageBox.warning(self, "Atualizar", "Repositório sem get_by_id.")
+            return
         data = self.repo.get_by_id(rid)
         if not data:
-            QMessageBox.warning(self, "Atualizar", "Não foi possível carregar os dados."); return
+            QMessageBox.warning(self, "Atualizar", "Não foi possível carregar os dados.")
+            return
 
-        dlg = QDialog(self); dlg.setWindowTitle(f"Atualizar registro #{rid}")
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Atualizar registro #{rid}")
         dlg.setSizeGripEnabled(True)
         scr = QApplication.primaryScreen().availableGeometry()
         dlg.resize(min(900, int(scr.width()*0.7)), min(650, int(scr.height()*0.75)))
@@ -470,27 +482,77 @@ class EstornoConsultaView(QWidget):
         scroll = QScrollArea(dlg); scroll.setWidgetResizable(True)
         wrap = QWidget(); form = QFormLayout(wrap); editors = {}
 
+        DATE_FIELDS = {"DATA_ENT"}
+
         for label in DISPLAY_COLS:
             key = DISPLAY_TO_KEY.get(label, label)
             val = data.get(key, data.get(key.upper(), data.get(key.lower(), "")))
-            if key == "OBSERVACAO":
-                ed = QPlainTextEdit("" if val is None else str(val)); ed.setMinimumHeight(120)
+
+            if key in DATE_FIELDS:
+                # editor de data
+                ed = QDateEdit(calendarPopup=True)
+                ed.setDisplayFormat("dd/MM/yyyy")
+                # tenta carregar a data atual
+                qd = self._parse_qdate(str(val or ""))
+                ed.setDate(qd if qd else QDate.currentDate())
+            elif key == "OBSERVACAO":
+                ed = QPlainTextEdit("" if val is None else str(val))
+                ed.setMinimumHeight(120)
             else:
                 ed = QLineEdit("" if val is None else str(val))
-                if key == "CLIENTE": ed.setMinimumWidth(360)
-            ed.setObjectName(key); editors[key] = ed; form.addRow(QLabel(label), ed)
+                if key == "CLIENTE":
+                    ed.setMinimumWidth(360)
 
-        scroll.setWidget(wrap); root.addWidget(scroll, 1)
-        btns = QHBoxLayout(); bt_cancel=_btn("Cancelar", False, 120, 36); bt_upd=_btn("Atualizar", True, 120, 36)
-        btns.addStretch(); btns.addWidget(bt_cancel); btns.addWidget(bt_upd); root.addLayout(btns)
+            ed.setObjectName(key)
+            editors[key] = ed
+            form.addRow(QLabel(label), ed)
+
+        scroll.setWidget(wrap)
+        root.addWidget(scroll, 1)
+
+        btns = QHBoxLayout()
+        bt_cancel = _btn("Cancelar", False, 120, 36)
+        bt_upd    = _btn("Atualizar", True, 120, 36)
+        btns.addStretch(); btns.addWidget(bt_cancel); btns.addWidget(bt_upd)
+        root.addLayout(btns)
 
         def do_update():
-            payload_db = {k: (w.toPlainText() if isinstance(w, QPlainTextEdit) else w.text()) for k, w in editors.items()}
+            payload_db = {}
+            only_cols  = []
+
+            for k, w in editors.items():
+                if isinstance(w, QDateEdit):
+                    new_val = w.date().toString("dd/MM/yyyy")
+                elif isinstance(w, QPlainTextEdit):
+                    new_val = w.toPlainText()
+                else:
+                    new_val = w.text()
+
+                old_val = str(data.get(k) or data.get(k.upper()) or data.get(k.lower()) or "")
+
+                # envia apenas o que realmente mudou e não está vazio
+                if new_val.strip() and new_val.strip() != old_val.strip():
+                    payload_db[k] = new_val
+                    only_cols.append(k)
+
+            if not payload_db:
+                QMessageBox.information(self, "Atualizar", "Nada para atualizar.")
+                return
+
             try:
-                ok = self.repo.update_by_id(rid, payload_db) if self.repo else False
-                if ok: QMessageBox.information(self, "Atualizar", "Registro atualizado."); dlg.accept(); self._do()
-                else: QMessageBox.warning(self, "Atualizar", "Nada para atualizar.")
+                ok = self.repo.update_by_id(rid, payload_db, only=only_cols)
+                if ok:
+                    QMessageBox.information(self, "Atualizar", "Registro atualizado.")
+                    dlg.accept()
+                    self._do()
+                else:
+                    QMessageBox.warning(self, "Atualizar", "Nada para atualizar.")
             except Exception as e:
                 QMessageBox.critical(self, "Erro", f"Falha ao atualizar: {e}")
 
-        bt_cancel.clicked.connect(dlg.reject); bt_upd.clicked.connect(do_update); dlg.exec()
+        bt_cancel.clicked.connect(dlg.reject)
+        bt_upd.clicked.connect(do_update)
+
+        # >>> Faltava isto: exibe o diálogo <<<
+        dlg.exec()
+

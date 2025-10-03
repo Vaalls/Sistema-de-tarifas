@@ -402,7 +402,7 @@ class PacoteConsultaView(QWidget):
     def _selected_rows(self)->List[int]: 
         return sorted({i.row() for i in self.table.selectionModel().selectedRows()})
    
-    def selected_ids(self)->List[int]:
+    def _selected_ids(self)->List[int]:
         out=[]; 
         for r in self._selected_rows():
             it0=self.table.item(r,0)
@@ -412,7 +412,7 @@ class PacoteConsultaView(QWidget):
         return out
 
     def _confirm_delete(self):
-        ids=self.selected_ids()
+        ids=self._selected_ids()
         if not ids: 
             QMessageBox.information(self,"Excluir","Selecione ao menos um registro."); 
             return
@@ -445,43 +445,99 @@ class PacoteConsultaView(QWidget):
         dlg.exec()
 
     def _open_update_dialog(self):
-        ids=self.selected_ids()
-        if len(ids)!=1: QMessageBox.information(self,"Atualizar","Selecione exatamente um registro."); return
-        rid=ids[0]
-        if not self.repo or not hasattr(self.repo,"get_by_id"): QMessageBox.warning(self,"Atualizar","Repositório sem get_by_id."); return
-        data=self.repo.get_by_id(rid)
-        if not data: QMessageBox.warning(self,"Atualizar","Não foi possível carregar os dados."); return
-        dlg=QDialog(self); dlg.setWindowTitle(f"Atualizar registro #{rid}")
-        v=QVBoxLayout(dlg); form=QFormLayout(); editors={}
+        ids = self._selected_ids()
+        if len(ids) != 1:
+            QMessageBox.information(self, "Atualizar", "Selecione exatamente um registro.")
+            return
+        rid = ids[0]
+        if not self.repo or not hasattr(self.repo, "get_by_id"):
+            QMessageBox.warning(self, "Atualizar", "Repositório sem get_by_id.")
+            return
+        data = self.repo.get_by_id(rid)
+        if not data:
+            QMessageBox.warning(self, "Atualizar", "Não foi possível carregar os dados.")
+            return
 
-        # editores (OBS em multiline)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Atualizar registro #{rid}")
+        dlg.setSizeGripEnabled(True)
+        scr = QApplication.primaryScreen().availableGeometry()
+        dlg.resize(min(900, int(scr.width()*0.7)), min(650, int(scr.height()*0.75)))
+
+        root = QVBoxLayout(dlg); root.setContentsMargins(12,12,12,12); root.setSpacing(10)
+        scroll = QScrollArea(dlg); scroll.setWidgetResizable(True)
+        wrap = QWidget(); form = QFormLayout(wrap); editors = {}
+
+        DATE_FIELDS = {"DATA_NEG", "DATA_REV"}
+
         for label in DISPLAY_COLS:
-            key = DISPLAY_TO_KEY.get(label,label)
+            key = DISPLAY_TO_KEY.get(label, label)
             val = data.get(key, data.get(key.upper(), data.get(key.lower(), "")))
-            if label=="OBS":
-                ed=QPlainTextEdit("" if val is None else str(val)); ed.setFixedHeight(100)
+
+            if key in DATE_FIELDS:
+                # editor de data
+                ed = QDateEdit(calendarPopup=True)
+                ed.setDisplayFormat("dd/MM/yyyy")
+                # tenta carregar a data atual
+                qd = self._parse_qdate(str(val or ""))
+                ed.setDate(qd if qd else QDate.currentDate())
+            elif key == "OBSERVACAO":
+                ed = QPlainTextEdit("" if val is None else str(val))
+                ed.setMinimumHeight(120)
             else:
-                ed=QLineEdit("" if val is None else str(val))
-                if label=="Cliente": ed.setMinimumWidth(360)
-            ed.setObjectName(key); editors[key]=ed; form.addRow(QLabel(label), ed)
-        v.addLayout(form)
+                ed = QLineEdit("" if val is None else str(val))
+                if key == "CLIENTE":
+                    ed.setMinimumWidth(360)
 
-        btns=QHBoxLayout(); bt_cancel=_btn("Cancelar",False,120,36); bt_upd=_btn("Atualizar",True,120,36)
-        btns.addStretch(); btns.addWidget(bt_cancel); btns.addWidget(bt_upd); v.addLayout(btns)
+            ed.setObjectName(key)
+            editors[key] = ed
+            form.addRow(QLabel(label), ed)
 
-        def do_upd():
-            # monta payload e filtra apenas chaves reconhecidas pelo repo (evita erro se 'OBS' não existir no DB)
-            payload={}
+        scroll.setWidget(wrap)
+        root.addWidget(scroll, 1)
+
+        btns = QHBoxLayout()
+        bt_cancel = _btn("Cancelar", False, 120, 36)
+        bt_upd    = _btn("Atualizar", True, 120, 36)
+        btns.addStretch(); btns.addWidget(bt_cancel); btns.addWidget(bt_upd)
+        root.addLayout(btns)
+
+        def do_update():
+            payload_db = {}
+            only_cols  = []
+
             for k, w in editors.items():
-                payload[k] = w.toPlainText() if isinstance(w, QPlainTextEdit) else w.text()
-            if hasattr(self.repo,"MAP"):
-                allowed = set(self.repo.MAP.keys()) | set(self.repo.MAP.values())
-                payload = {k:v for k,v in payload.items() if k in allowed}
-            try:
-                ok=self.repo.update_by_id(rid,payload) if self.repo else False
-                if ok: QMessageBox.information(self,"Atualizar","Registro atualizado."); dlg.accept(); self._do()
-                else: QMessageBox.warning(self,"Atualizar","Nada para atualizar.")
-            except Exception as e:
-                QMessageBox.critical(self,"Erro",f"Falha ao atualizar: {e}")
+                if isinstance(w, QDateEdit):
+                    new_val = w.date().toString("dd/MM/yyyy")
+                elif isinstance(w, QPlainTextEdit):
+                    new_val = w.toPlainText()
+                else:
+                    new_val = w.text()
 
-        bt_cancel.clicked.connect(dlg.reject); bt_upd.clicked.connect(do_upd); dlg.exec()
+                old_val = str(data.get(k) or data.get(k.upper()) or data.get(k.lower()) or "")
+
+                # envia apenas o que realmente mudou e não está vazio
+                if new_val.strip() and new_val.strip() != old_val.strip():
+                    payload_db[k] = new_val
+                    only_cols.append(k)
+
+            if not payload_db:
+                QMessageBox.information(self, "Atualizar", "Nada para atualizar.")
+                return
+
+            try:
+                ok = self.repo.update_by_id(rid, payload_db, only=only_cols)
+                if ok:
+                    QMessageBox.information(self, "Atualizar", "Registro atualizado.")
+                    dlg.accept()
+                    self._do()
+                else:
+                    QMessageBox.warning(self, "Atualizar", "Nada para atualizar.")
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Falha ao atualizar: {e}")
+
+        bt_cancel.clicked.connect(dlg.reject)
+        bt_upd.clicked.connect(do_update)
+
+        # >>> Faltava isto: exibe o diálogo <<<
+        dlg.exec()

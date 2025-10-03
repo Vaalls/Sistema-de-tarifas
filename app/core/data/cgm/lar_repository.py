@@ -107,59 +107,81 @@ class LarRepository(BaseRepository):
       rows = self._fetchall(sql, id=id_)
       return rows[0] if rows else None
     
-    def update_by_id(self, id_: int, data: Dict[str, Any]) -> bool:
+    def update_by_id(self, id_: int, data: Dict[str, Any], only: List[str]) -> bool:
+        """
+        Atualiza o registro Id. Se `only` for informado, atualiza apenas essas colunas.
+        Em `only` você pode passar chaves do formulário (MAP) ou nomes de colunas do BD.
+        - DATA_NEG: normaliza como data (datetime)
+        - VENCIMENTO: mantém como texto (NVARCHAR no schema)
+        - Valores vazios/None são ignorados (não sobrescrevem no BD)
+        """
         if not data:
             return False
 
-        d = dict(data)  # cópia para não mutar o chamador
-        db: Dict[str, Any] = {}  # colunas do BD -> valor normalizado
+        # Se 'only' veio, convertemos para nomes de colunas do BD
+        allowed_cols: set[str] | None = None
+        if only:
+            allowed_cols = set(self.MAP.get(k, k) for k in only)
 
-        def _put(col: str, val: Any):
-            # ignora None ou string vazia (não atualiza a coluna)
-            if val is None: 
-                return
-            if isinstance(val, str) and not val.strip():
-                return
-            db[col] = val
+        def _allowed(col: str) -> bool:
+            return (allowed_cols is None) or (col in allowed_cols)
 
-        # --- 1) chaves do formulário (usa MAP) ---
+        db_vals: Dict[str, Any] = {}
+
+          # 1) chaves do formulário (via MAP)
         for form_key, col in self.MAP.items():
-            if form_key in d:
-                v = d[form_key]
-                # normalização por coluna de destino
-                if col in ("DATA_NEG", "VENCIMENTO"):
-                    v = self.to_date(v)
-                elif col in ("PRAZO",):
-                    v = self._to_float(v)
-                elif col in ("VALOR_MAJORADO", "VALOR_REQUERIDO", "VALOR_LAR"):
-                    v = self.to_money(v)
-                elif col == "ATUADO_SCT":
-                    v = self._to_bit(v)
-                _put(col, v)
-
-        # --- 2) também aceita nomes de coluna do BD direto ---
-        for col, v in d.items():
-            if col in db:        # já coberto via MAP
+            if form_key not in data or not _allowed(col):
                 continue
-            if col in ("DATA_NEG", "VENCIMENTO"):
-                v = self.to_date(v)
-            elif col in ("PRAZO",):
-                v = self._to_float(v)
-            elif col in ("VALOR_MAJORADO", "VALOR_REQUERIDO", "VALOR_LAR"):
-                v = self.to_money(v)
-            elif col == "ATUADO_SCT":
-                v = self._to_bit(v)
-            _put(col, v)
+            v = data.get(form_key)
 
-        if not db:
+            # Ignora None ou string vazia (não atualiza a coluna)
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            # Normalizações por coluna
+            if col == "DATA_NEG":
+                v = self.to_date(v)            # DATA_NEG é datetime
+            elif col in ("VALOR_MAJORADO", "VALOR_REQUERIDO"):
+                v = self.to_money(v)
+            elif col == "PRAZO":
+                v = self._to_float(v)
+            elif col == ("ATUADO_SCT"):
+                v = self._to_bit(v)
+            # VENCIMENTO: não converter (é NVARCHAR)
+
+            db_vals[col] = v
+
+        # 2) aceita também nomes de coluna do BD diretamente
+        for col, v in data.items():
+            if col in self.MAP:  # já tratado acima
+                continue
+            if not _allowed(col):
+                continue
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            # Normalizações quando já vier nome da coluna do BD
+            if col == "DATA_NEG":
+                v = self.to_date(v)
+            elif col in ("VALOR_TARIFA", "VALOR_AUTORIZADO"):
+                v = self.to_money(v)
+            elif col == "PRAZO":
+                v = self._to_float(v)
+            elif col == ("ATUADO_SCT", "NEG_ESP"):
+                v = self._to_bit(v)
+            # VENCIMENTO: manter texto
+
+
+            db_vals[col] = v
+
+        if not db_vals:
             return False
 
-        sets = [f"{col} = :{col}" for col in db.keys()]
-        db["id"] = id_
+        sets = [f"{c} = :{c}" for c in db_vals]
+        db_vals["id"] = id_
         sql = f"UPDATE {self.TABLE} SET {', '.join(sets)} WHERE Id = :id"
-        self._exec(sql, **db)
+        self._exec(sql, **db_vals)
         return True
-
     
     def delete_by_id(self, id_: int) -> bool:
       sql = f"DELETE FROM {self.TABLE} WHERE Id = :id"
